@@ -29,6 +29,10 @@ EXE_INC = \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
     -I$(LIB_SRC)/dynamicFvMesh/lnInclude \
     -I$(LIB_SRC)/regionFaModels/lnInclude \
+<<<<<<< HEAD
+=======
+    -I$(QBMM_SRC)/quadratureMethods/supportType \
+>>>>>>> feature/crystallization-models
     -I$(QBMM_SRC)/quadratureMethods/momentSets/lnInclude \
     -I$(QBMM_SRC)/quadratureMethods/momentInversion/lnInclude \
     -I$(QBMM_SRC)/quadratureMethods/quadratureNode/lnInclude \
@@ -41,7 +45,11 @@ EXE_INC = \
     -I$(QBMM_SRC)/quadratureMethods/realizableOdeSolver \
     -I$(QBMM_SRC)/mappedList \
     -I$(QBMM_SRC)/mappedPtrList \
+<<<<<<< HEAD
     -I$(QBMM_SRC)/crystallization/lnInclude 
+=======
+    -I$(QBMM_SRC)/quadratureMethods/crystallization/lnInclude
+>>>>>>> feature/crystallization-models
 
 
 EXE_LIBS = \

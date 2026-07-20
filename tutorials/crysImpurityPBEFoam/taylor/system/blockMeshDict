@@ -1,0 +1,54 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object blockMeshDict;
+}
+
+scale 1;
+
+rIn 0.024;
+rOut 0.028;
+L 0.16;
+angle 2.5;
+
+xIn #calc "$rIn*cos(degToRad($angle))";
+yIn #calc "$rIn*sin(degToRad($angle))";
+xOut #calc "$rOut*cos(degToRad($angle))";
+yOut #calc "$rOut*sin(degToRad($angle))";
+
+vertices
+(
+    ($xIn #calc "-$yIn" 0)
+    ($xOut #calc "-$yOut" 0)
+    ($xOut $yOut 0)
+    ($xIn $yIn 0)
+    ($xIn #calc "-$yIn" $L)
+    ($xOut #calc "-$yOut" $L)
+    ($xOut $yOut $L)
+    ($xIn $yIn $L)
+);
+
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) (12 1 24) simpleGrading (1 1 1)
+);
+
+edges
+(
+    arc 0 3 ($rIn 0 0)
+    arc 1 2 ($rOut 0 0)
+    arc 4 7 ($rIn 0 $L)
+    arc 5 6 ($rOut 0 $L)
+);
+
+boundary
+(
+    innerWall { type wall; faces ((0 4 7 3)); }
+    outerWall { type wall; faces ((1 2 6 5)); }
+    bottom { type wall; faces ((0 3 2 1)); }
+    top { type wall; faces ((4 5 6 7)); }
+    front { type wedge; faces ((2 3 7 6)); }
+    back { type wedge; faces ((0 1 5 4)); }
+);

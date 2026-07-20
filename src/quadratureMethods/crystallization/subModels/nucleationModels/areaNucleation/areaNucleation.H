@@ -75,6 +75,9 @@ private:
         //- Group name used for moment lookup
         word momentGroup_;
 
+        //- Resolved second-moment field name
+        word m2Name_;
+
         //- Supersaturation field
         const volScalarField& sigma_;
 

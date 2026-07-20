@@ -77,7 +77,7 @@ Foam::univariateMomentAdvection::univariateMomentAdvection
     ),
     phi_(phi),
     support_(support),
-    nDimensions_(1)
+    nDimensions_(quadrature.nDimensions())
 {
     forAll(divMoments_, momenti)
     {

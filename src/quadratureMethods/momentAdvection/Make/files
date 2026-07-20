@@ -2,6 +2,7 @@ univariate/univariateMomentAdvection/univariateMomentAdvection.C
 univariate/univariateMomentAdvection/newUnivariateMomentAdvection.C
 
 univariate/firstOrderKineticUnivariateAdvection/firstOrderKineticUnivariateAdvection.C
+univariate/multivariateFirstOrderKineticScalar/multivariateFirstOrderKineticScalar.C
 univariate/noUnivariateAdvection/noUnivariateAdvection.C
 univariate/zetaUnivariateAdvection/zetaUnivariateAdvection.C
 

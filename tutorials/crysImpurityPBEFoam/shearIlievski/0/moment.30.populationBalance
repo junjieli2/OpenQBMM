@@ -1,0 +1,14 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class volScalarField;
+    object moment.30.populationBalance;
+}
+
+dimensions [0 0 0 0 0 0 0];
+internalField uniform 5.0e-3;
+boundaryField
+{
+    walls { type zeroGradient; }
+}

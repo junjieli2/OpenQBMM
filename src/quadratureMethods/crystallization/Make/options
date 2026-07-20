@@ -71,6 +71,8 @@ EXE_INC = \
     -I$(QBMM_SRC)/quadratureMethods/populationBalanceModels/populationBalanceSubModels/nucleationModels/nucleationModel \
     -I$(QBMM_SRC)/quadratureMethods/realizableOdeSolver  \
     -I$(QBMM_SRC)/Vandermonde/lnInclude \
+    -IsubModels/impurityAdsorptionModels/impurityAdsorptionModel \
+    -IsubModels/impurityAdsorptionModels/competitiveAdsorption \
     -IsubModels/aggregationModels/aggregationSubModel/crystalAggregationEfficiency \
     -IsubModels/aggregationModels/aggregationSubModel/FrequencyModel/crystalCollisionFrequency \
     -IsubModels/aggregationModels/aggregationSubModel/crystalAggregation

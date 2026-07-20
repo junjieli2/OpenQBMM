@@ -97,19 +97,26 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
         {
             updateCellMomentSource(celli);
 
+            scalarList momentSources(nMoments, Zero);
+
             forAll(moments, mi)
             {
                 const labelList& order = momentOrders[mi];
 
-                moments[mi][celli] +=
-                    globalDt
-                   *cellMomentSource
-                    (
-                        order,
-                        celli,
-                        quadrature,
-                        enviroment
-                    );
+                momentSources[mi] = cellMomentSource
+                (
+                    order,
+                    celli,
+                    quadrature,
+                    enviroment
+                );
+            }
+
+            // Apply all components together so every source evaluation sees
+            // the same frozen moment state.
+            forAll(moments, mi)
+            {
+                moments[mi][celli] += globalDt*momentSources[mi];
             }
 
             quadrature.updateLocalQuadrature(celli, true);
@@ -149,7 +156,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
         scalar localT(0);
 
         // Initialize the local step
-        scalar localDt = localDt_[celli];
+        scalar localDt = min(localDt_[celli], globalDt);
 
         // Initialize RK parameters
         scalarList k1(nMoments, Zero);
@@ -191,12 +198,15 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                             enviroment
                         );
 
-                    moments[mi][celli] = oldMoments[mi] + k1[mi];
-
                     if (mag(k1[mi]) > SMALL)
                     {
                         nullSource = false;
                     }
+                }
+
+                forAll(moments, mi)
+                {
+                    moments[mi][celli] = oldMoments[mi] + k1[mi];
                 }
 
                 realizableUpdate1 =
@@ -225,7 +235,12 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                             enviroment
                         );
 
-                    moments[mi][celli] = oldMoments[mi] + (k1[mi] + k2[mi])/4.0;
+                }
+
+                forAll(moments, mi)
+                {
+                    moments[mi][celli] =
+                        oldMoments[mi] + (k1[mi] + k2[mi])/4.0;
                 }
 
                 realizableUpdate2 =
@@ -249,10 +264,15 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                             enviroment
                         );
 
-                    moments[mi][celli] =
-                        oldMoments[mi] + (k1[mi] + k2[mi] + 4.0*k3[mi])/6.0;
-
                     diff23[mi] = (2.0*k3[mi] - k1[mi] - k2[mi])/3.0;
+                }
+
+
+                forAll(moments, mi)
+                {
+                    moments[mi][celli] =
+                        oldMoments[mi]
+                      + (k1[mi] + k2[mi] + 4.0*k3[mi])/6.0;
                 }
 
                 realizableUpdate3 =
@@ -329,27 +349,71 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
 
             error = sqrt(error/nMoments);
 
-            if (error < SMALL || maxChange < SMALL)
+            if (error < SMALL)
             {
-                timeComplete = true;
-                localT = Zero;
+                // An embedded error of zero means that this local step was
+                // accepted, not that the complete global time interval was
+                // covered. This distinction matters when deltaT increases
+                // after a smaller local step was cached (for example, for a
+                // constant nucleation source).
+                localT += localDt;
 
-                // Exiting if the change is small but the error is not to
-                // avoid a possible infinite loop, but informing the user.
-                if (error > SMALL)
+                forAll(oldMoments, mi)
                 {
-                    WarningInFunction 
-                        << "The maximum change in moments is small, "
-                        << "but error is not.\n"
-                        << nl
-                        << "Error: " << error << nl
-                        << "Max. change: " << maxChange << nl
-                        << nl
-                        << "\nThis may indicate a problem with the "
-                        << "realizable ODE solver." << endl;
+                    oldMoments[mi] = moments[mi][celli];
                 }
 
-                break;
+                const scalar remaining =
+                    max(globalDt - localT, scalar(0));
+
+                if (remaining <= SMALL*max(globalDt, scalar(1)))
+                {
+                    timeComplete = true;
+                    localT = Zero;
+                    break;
+                }
+
+                // With vanishing estimated error, try the complete remaining
+                // interval. A nonlinear source will still be rejected and
+                // reduced by the normal error-control branch if necessary.
+                localDt = remaining;
+                localDt_[celli] = localDt;
+            }
+            else if (maxChange < SMALL)
+            {
+                WarningInFunction
+                    << "The maximum change in moments is small, "
+                    << "but error is not.\n"
+                    << nl
+                    << "Error: " << error << nl
+                    << "Max. change: " << maxChange << nl
+                    << nl
+                    << "\nThis may indicate a problem with the "
+                    << "realizable ODE solver." << endl;
+
+                // The current change is negligible in absolute terms, but it
+                // still only covers localDt. Accept it and try the remaining
+                // global interval so a previously cached small step cannot
+                // silently truncate the physical time advance.
+                localT += localDt;
+
+                forAll(oldMoments, mi)
+                {
+                    oldMoments[mi] = moments[mi][celli];
+                }
+
+                const scalar remaining =
+                    max(globalDt - localT, scalar(0));
+
+                if (remaining <= SMALL*max(globalDt, scalar(1)))
+                {
+                    timeComplete = true;
+                    localT = Zero;
+                    break;
+                }
+
+                localDt = remaining;
+                localDt_[celli] = localDt;
             }
             else if (error < 1)
             {

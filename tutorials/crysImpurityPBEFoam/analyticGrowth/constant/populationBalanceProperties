@@ -1,0 +1,82 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM                                        |
+|  \\    /   O peration     |                                                 |
+|   \\  /    A nd           |                                                 |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      populationBalanceProperties;
+}
+
+populationBalanceModel crysImpurityPopulationBalance;
+
+crysImpurityPopulationBalanceCoeffs
+{
+    rhop            2000;
+    shapeFactor     0.523598775598;
+    sizeRef         1.0e-4;
+
+    speciesCoupled  false;
+    nucleation      false;
+    growth          true;
+    aggregation     false;
+    breakup         false;
+
+    saturationModel
+    {
+        solutionSaturationModel K2SO4H2O;
+    }
+
+    diffusionModel
+    {
+        diffusionModel none;
+    }
+
+    growthModel
+    {
+        growthModel     coolCrysGrowth;
+        minAbscissa     1.0e-9;
+        maxAbscissa     1.0e-2;
+        CgGrowth        CgGrowth [0 1 -1 0 0 0 0] 1.0e-6;
+        powCoeff        1;
+    }
+
+    impurityCoeffs
+    {
+        impurityAdsorptionModel competitiveAdsorption;
+        soluteField             C;
+        impurityField           Ci;
+
+        Ki              Ki [-1 3 0 0 0 0 0] 0.5;
+        Ks              Ks [-1 3 0 0 0 0 0] 0.01;
+        eta             0.01;
+        rhoi            1200;
+        surfaceFactor   3.14159265359;
+        zNucleation     0;
+    }
+
+    Pr              7;
+    Prt             0.85;
+    molarDiff       1.0e-9;
+    Sct             0.7;
+
+    odeCoeffs
+    {
+        solveSources true;
+        solveOde     true;
+        ATol         1.0e-12;
+        RTol         1.0e-9;
+        fac          0.9;
+        facMin       0.2;
+        facMax       2;
+        minLocalDt   1.0e-12;
+    }
+}
+
+// ************************************************************************* //
+

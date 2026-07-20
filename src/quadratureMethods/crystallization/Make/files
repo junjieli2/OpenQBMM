@@ -15,6 +15,9 @@ subModels/nucleationModels/areaNucleation/areaNucleation.C
 subModels/nucleationModels/CNTNucleation/CNTNucleation.C
 subModels/nucleationModels/solidContentNucleation/solidContentNucleation.C
 
+subModels/impurityAdsorptionModels/impurityAdsorptionModel/impurityAdsorptionModel.C
+subModels/impurityAdsorptionModels/competitiveAdsorption/competitiveAdsorption.C
+
 subModels/aggregationModels/aggregationSubModel/crystalAggregationEfficiency/crystalAggregationEfficiency.C
 subModels/aggregationModels/aggregationSubModel/crystalAggregationEfficiency/newCrystalAggregationEfficiency.C
 subModels/aggregationModels/aggregationSubModel/HounslowModel/HounslowEfficiency.C
@@ -31,5 +34,6 @@ subModels/aggregationModels/aggregationSubModel/crystalAggregation/crystalAggreg
 subModels/aggregationModels/aggregationSubModel/LinnikovModel/linnikovAggregation.C
 
 crystalPopulationBalance/crystalPopulationBalance.C
+crysImpurityPopulationBalance/crysImpurityPopulationBalance.C
 
 LIB = $(FOAM_MODULE_LIBBIN)/libcrystalPopuBal

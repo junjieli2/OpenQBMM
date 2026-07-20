@@ -32,6 +32,70 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include <cmath>
 
+namespace
+{
+
+Foam::word resolveSolidContentMomentName
+(
+    const Foam::dictionary& dict,
+    const Foam::fvMesh& mesh,
+    const Foam::word& momentGroup
+)
+{
+    if (dict.found("m3Name"))
+    {
+        const Foam::word configuredName(dict.lookup("m3Name"));
+
+        if (!mesh.foundObject<Foam::volScalarField>(configuredName))
+        {
+            FatalIOErrorInFunction(dict)
+                << "Configured third-moment field '" << configuredName
+                << "' was not found in the mesh object registry."
+                << exit(Foam::FatalIOError);
+        }
+
+        return configuredName;
+    }
+
+    const Foam::word bivariateName
+    (
+        Foam::IOobject::groupName
+        (
+            Foam::IOobject::groupName("moment", "30"),
+            momentGroup
+        )
+    );
+
+    if (mesh.foundObject<Foam::volScalarField>(bivariateName))
+    {
+        return bivariateName;
+    }
+
+    const Foam::word legacyName
+    (
+        Foam::IOobject::groupName
+        (
+            Foam::IOobject::groupName("moment", "3"),
+            momentGroup
+        )
+    );
+
+    if (mesh.foundObject<Foam::volScalarField>(legacyName))
+    {
+        return legacyName;
+    }
+
+    FatalIOErrorInFunction(dict)
+        << "No third-moment field was found. Tried bivariate field '"
+        << bivariateName << "' and legacy field '" << legacyName << "'. "
+        << "Set m3Name explicitly to use another field."
+        << exit(Foam::FatalIOError);
+
+    return bivariateName;
+}
+
+}
+
 namespace Foam
 {
 namespace populationBalanceSubModels
@@ -62,20 +126,14 @@ Foam::populationBalanceSubModels::nucleationModels::solidContentNucleation::soli
     m3Crit_(readScalar(dict.lookup("m3Crit"))),
     r_(readScalar(dict.lookup("r"))),
     momentGroup_(dict.lookupOrDefault<word>("momentGroup", "populationBalance")),
+    m3Name_(resolveSolidContentMomentName(dict, mesh, momentGroup_)),
     sigma_
     (
         mesh.lookupObject<volScalarField>("sigma")
     ),
     m3_
     (
-        mesh.lookupObject<volScalarField>
-        (
-            IOobject::groupName
-            (
-                IOobject::groupName("moment", "3"),
-                momentGroup_
-            )
-        )
+        mesh.lookupObject<volScalarField>(m3Name_)
     ),
     JField_
     (

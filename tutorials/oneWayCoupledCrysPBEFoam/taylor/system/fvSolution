@@ -54,13 +54,9 @@ solvers
 
     "(k|omega|epsilon)Final"
     {
-<<<<<<< HEAD
-        $k;
-=======
         solver          smoothSolver;
         smoother        symGaussSeidel;
         tolerance       1e-08;
->>>>>>> feature/crystallization-models
         relTol          0;
     }
 
@@ -74,13 +70,9 @@ solvers
 
     "(T|C)Final"
     {
-<<<<<<< HEAD
-        $T;
-=======
         solver          PBiCGStab;
         preconditioner  DILU;
         tolerance       1e-06;
->>>>>>> feature/crystallization-models
         relTol          0;
     }
 

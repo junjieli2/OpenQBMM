@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+cd "${0%/*}" || exit 1
+
+./Allclean
+
+. "${WM_PROJECT_DIR:?OpenFOAM environment is not loaded}/bin/tools/RunFunctions"
+
+runApplication blockMesh
+runApplication crysImpurityPBEFoam

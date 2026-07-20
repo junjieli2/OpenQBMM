@@ -71,7 +71,14 @@ int main(int argc, char *argv[])
 
     Info<< "Original moments:" << endl;
 
-    multivariateMomentSet moments(nMoments, momentOrders, "R", SMALL, SMALL);
+    multivariateMomentSet moments
+    (
+        nMoments,
+        momentOrders,
+        List<supportType>(momentOrders[0].size(), supportType::R),
+        SMALL,
+        SMALL
+    );
 
     forAll(momentOrders, mi)
     {

@@ -141,6 +141,21 @@ public:
             const label environment = 0
         ) const = 0;
 
+        //- Moment of the daughter distribution.  This public wrapper lets
+        //  coupled internal-coordinate models reuse the configured daughter
+        //  law while applying their own conservative coordinate mapping.
+        scalar daughterMoment
+        (
+            const label order,
+            const scalar abscissa,
+            const bool lengthBased = true
+        ) const
+        {
+            return lengthBased
+                ? daughterDistribution_->mD(order, abscissa)
+                : daughterDistribution_->mDMass(order, abscissa);
+        }
+
         //- Length based breakup source given two abscissae and an order
         scalar nodeSource
         (

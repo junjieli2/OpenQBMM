@@ -1,0 +1,72 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM                                        |
+|  \\    /   O peration     |                                                 |
+|   \\  /    A nd           |                                                 |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      quadratureProperties.populationBalance;
+}
+
+fieldMomentInversion basicScalarFieldMomentInversion;
+
+basicScalarMomentInversion
+{
+    type        conditional;
+    supports    (RPlus RPlus);
+
+    basicQuadrature0
+    {
+        univariateMomentInversion Gauss;
+    }
+
+    basicQuadrature1
+    {
+        univariateMomentInversion Gauss;
+    }
+}
+
+momentAdvection
+{
+    univariateMomentAdvection multivariateFirstOrderKineticScalar;
+
+    basicScalarMomentInversion
+    {
+        type        conditional;
+        supports    (RPlus RPlus);
+
+        basicQuadrature0
+        {
+            univariateMomentInversion Gauss;
+        }
+
+        basicQuadrature1
+        {
+            univariateMomentInversion Gauss;
+        }
+    }
+}
+
+moments
+(
+    (0 0)
+    (1 0)
+    (2 0)
+    (3 0)
+    (0 1)
+    (1 1)
+);
+
+nodes
+(
+    (0 0)
+    (1 0)
+);
+
+// ************************************************************************* //
+

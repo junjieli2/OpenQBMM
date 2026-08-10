@@ -35,6 +35,9 @@ Description
 
     where \f$T\f$ is in K and \f$C^*\f$ is in kg/m3.
 
+    The coefficients A, B and C can be overridden in the model dictionary.
+    Their defaults retain the historical correlation above.
+
 SourceFiles
     K2SO4H2O.C
 
@@ -61,6 +64,11 @@ class K2SO4H2O
     public solutionSaturationModel
 {
     // Private data
+
+        //- Coefficients in Csat = A + B*T + C*T^2
+        scalar A_;
+        scalar B_;
+        scalar C_;
 
 
 public:

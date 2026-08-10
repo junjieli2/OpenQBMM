@@ -75,6 +75,7 @@ EXE_INC = \
     -IsubModels/impurityAdsorptionModels/competitiveAdsorption \
     -IsubModels/aggregationModels/aggregationSubModel/crystalAggregationEfficiency \
     -IsubModels/aggregationModels/aggregationSubModel/FrequencyModel/crystalCollisionFrequency \
+    -IsubModels/aggregationModels/aggregationSubModel/FrequencyModel/sumFrequency \
     -IsubModels/aggregationModels/aggregationSubModel/crystalAggregation
 
 

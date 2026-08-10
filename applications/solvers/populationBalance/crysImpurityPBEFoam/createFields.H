@@ -40,6 +40,33 @@ Switch solveFlow
     pimple.dict().getOrDefault<bool>("solveFlow", true)
 );
 
+const word temperatureMode
+(
+    pimple.dict().getOrDefault<word>("temperatureMode", "transport")
+);
+
+autoPtr<Function1<scalar>> prescribedTemperature;
+
+if (temperatureMode == "prescribed")
+{
+    prescribedTemperature =
+        Function1<scalar>::New
+        (
+            "prescribedTemperature",
+            pimple.dict(),
+            &runTime
+        );
+}
+else if (temperatureMode != "transport")
+{
+    FatalIOErrorInFunction(pimple.dict())
+        << "Unknown temperatureMode '" << temperatureMode << "'. Valid "
+        << "options are 'transport' and 'prescribed'."
+        << exit(FatalIOError);
+}
+
+Info<< "Temperature mode: " << temperatureMode << nl << endl;
+
 singlePhaseTransportModel laminarTransport(U, phi);
 
 autoPtr<incompressible::turbulenceModel> turbulence

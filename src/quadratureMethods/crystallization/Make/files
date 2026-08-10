@@ -1,6 +1,7 @@
 solutionSaturationModels/solutionSaturationModel/solutionSaturationModel.C
 solutionSaturationModels/LlysineH2O/LlysineH2O.C
 solutionSaturationModels/K2SO4H2O/K2SO4H2O.C
+solutionSaturationModels/KDPH2O/KDPH2O.C
 
 
 subModels/growthModels/coolCrysGrowth/coolCrysGrowth.C
@@ -14,6 +15,7 @@ subModels/nucleationModels/deltaNucleation/deltaNucleation.C
 subModels/nucleationModels/areaNucleation/areaNucleation.C
 subModels/nucleationModels/CNTNucleation/CNTNucleation.C
 subModels/nucleationModels/solidContentNucleation/solidContentNucleation.C
+subModels/nucleationModels/borsosPrimaryNucleation/borsosPrimaryNucleation.C
 
 subModels/impurityAdsorptionModels/impurityAdsorptionModel/impurityAdsorptionModel.C
 subModels/impurityAdsorptionModels/competitiveAdsorption/competitiveAdsorption.C
@@ -28,6 +30,7 @@ subModels/aggregationModels/aggregationSubModel/FrequencyModel/crystalCollisionF
 subModels/aggregationModels/aggregationSubModel/FrequencyModel/crystalCollisionFrequency/newCrystalCollisionFrequency.C
 subModels/aggregationModels/aggregationSubModel/FrequencyModel/turbulentFrequency/turbulentFrequency.C
 subModels/aggregationModels/aggregationSubModel/FrequencyModel/shearFrequency/shearFrequency.C
+subModels/aggregationModels/aggregationSubModel/FrequencyModel/sumFrequency/sumFrequency.C
 
 subModels/aggregationModels/aggregationSubModel/crystalAggregation/crystalAggregation.C
 
@@ -35,5 +38,7 @@ subModels/aggregationModels/aggregationSubModel/LinnikovModel/linnikovAggregatio
 
 crystalPopulationBalance/crystalPopulationBalance.C
 crysImpurityPopulationBalance/crysImpurityPopulationBalance.C
+crysDualImpurityPopulationBalance/crysDualImpurityPopulationBalance.C
+twoPopulationBalanceSystem/twoPopulationBalanceSystem.C
 
 LIB = $(FOAM_MODULE_LIBBIN)/libcrystalPopuBal

@@ -71,7 +71,10 @@ crystalAggregationEfficiencies::Ilievski::Ilievski
     useConfiguredL10_(dict.found("L10")),
     GField_
     (
-        mesh.lookupObject<volScalarField>("growthRate")
+        mesh.lookupObject<volScalarField>
+        (
+            dict.lookupOrDefault<word>("growthRateField", "growthRate")
+        )
     ),
     nu_
     (

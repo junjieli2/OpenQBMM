@@ -1,0 +1,16 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class volScalarField;
+    object moment.1.singleCrystal;
+}
+dimensions [0 -2 0 0 0 0 0];
+internalField uniform 150;
+boundaryField
+{
+    walls
+    {
+        type zeroGradient;
+    }
+}

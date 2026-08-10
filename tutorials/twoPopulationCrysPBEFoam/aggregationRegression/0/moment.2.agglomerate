@@ -1,0 +1,16 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class volScalarField;
+    object moment.2.agglomerate;
+}
+dimensions [0 -1 0 0 0 0 0];
+internalField uniform 0;
+boundaryField
+{
+    walls
+    {
+        type zeroGradient;
+    }
+}

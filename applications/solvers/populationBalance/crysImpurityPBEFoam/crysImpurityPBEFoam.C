@@ -30,6 +30,7 @@ Description
 #include "fvcSmooth.H"
 #include "crysImpurityPopulationBalance.H"
 #include "solutionSaturationModel.H"
+#include "Function1.H"
 
 #include <cmath>
 
@@ -142,7 +143,38 @@ int main(int argc, char *argv[])
             }
         }
 
-        #include "TEqn.H"
+        if (temperatureMode == "transport")
+        {
+            #include "TEqn.H"
+        }
+        else
+        {
+            const scalar imposedTemperature =
+                prescribedTemperature->value(runTime.value());
+
+            if
+            (
+                !std::isfinite(imposedTemperature)
+             || imposedTemperature <= 0
+            )
+            {
+                FatalErrorInFunction
+                    << "prescribedTemperature must be finite and positive, "
+                    << "but is " << imposedTemperature << " K at t = "
+                    << runTime.value() << " s." << exit(FatalError);
+            }
+
+            T =
+                dimensionedScalar
+                (
+                    "prescribedTemperature",
+                    dimTemperature,
+                    imposedTemperature
+                );
+            T.correctBoundaryConditions();
+        }
+
+        #include "updateSaturation.H"
 
         populationBalance->solve();
 

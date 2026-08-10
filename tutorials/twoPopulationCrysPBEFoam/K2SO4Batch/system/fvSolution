@@ -1,0 +1,52 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object fvSolution;
+}
+solvers
+{
+    p
+    {
+        solver PCG;
+        preconditioner DIC;
+        tolerance 1e-12;
+        relTol 0;
+    }
+    U
+    {
+        solver smoothSolver;
+        smoother symGaussSeidel;
+        tolerance 1e-12;
+        relTol 0;
+    }
+    "(T|C|moment.*)"
+    {
+        solver PBiCGStab;
+        preconditioner DILU;
+        tolerance 1e-13;
+        relTol 0;
+    }
+}
+PIMPLE
+{
+    solveFlow false;
+    temperatureMode prescribed;
+    prescribedTemperature
+    {
+        type table;
+        values
+        (
+            (0   303.15)
+            (0.2 298.15)
+        );
+        outOfBounds clamp;
+        interpolationScheme linear;
+    }
+    nOuterCorrectors 1;
+    nCorrectors 1;
+    nNonOrthogonalCorrectors 0;
+    pRefCell 0;
+    pRefValue 0;
+}

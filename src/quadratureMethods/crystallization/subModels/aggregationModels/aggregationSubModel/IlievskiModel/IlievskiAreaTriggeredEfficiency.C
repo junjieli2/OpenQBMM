@@ -69,7 +69,10 @@ crystalAggregationEfficiencies::IlievskiAreaTriggered::IlievskiAreaTriggered
     psiBoostMax_(dict.lookupOrDefault<scalar>("psiBoostMax", 0.0)),
     GField_
     (
-        mesh.lookupObject<volScalarField>("growthRate")
+        mesh.lookupObject<volScalarField>
+        (
+            dict.lookupOrDefault<word>("growthRateField", "growthRate")
+        )
     ),
     nu_
     (

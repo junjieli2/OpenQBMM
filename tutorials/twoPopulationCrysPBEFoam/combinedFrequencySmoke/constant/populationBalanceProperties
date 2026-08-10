@@ -1,0 +1,134 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object populationBalanceProperties;
+}
+populationBalanceModel twoPopulationBalanceSystem;
+twoPopulationBalanceSystemCoeffs
+{
+    speciesCoupled false;
+    rhop rhop [1 -3 0 0 0 0 0] 2666;
+    shapeFactor 0.5235987755982988;
+    saturationModel
+    {
+        solutionSaturationModel K2SO4H2O;
+    }
+    singleCrystal
+    {
+        nucleation false;
+        growth true;
+        growthModel
+        {
+            growthModel coolCrysGrowth;
+            CgGrowth CgGrowth [0 1 -1 0 0 0 0] 0;
+            powCoeff 1;
+        }
+        diffusionModel { diffusionModel none; }
+    }
+    agglomerate
+    {
+        growth true;
+        growthModel
+        {
+            growthModel coolCrysGrowth;
+            CgGrowth CgGrowth [0 1 -1 0 0 0 0] 0;
+            powCoeff 1;
+        }
+        diffusionModel { diffusionModel none; }
+    }
+    aggregation
+    {
+        ss
+        {
+            enabled true;
+            aggregationKernel crystalAggregation;
+Ca Ca [0 0 -1 0 0 0 0] 1;
+crystalCollisionFrequency sum;
+frequencyModels
+{
+    turbulentPart
+    {
+        crystalCollisionFrequency turbulent;
+        Cturb 1.522;
+    }
+    shearPart
+    {
+        crystalCollisionFrequency shear;
+        Cshear 0.1666666666666667;
+    }
+}
+crystalAggregationEfficiency Ilievski;
+Utip 1;
+psi0 0.1;
+CIlievski 0;
+
+        }
+        sa
+        {
+            enabled true;
+            aggregationKernel crystalAggregation;
+Ca Ca [0 0 -1 0 0 0 0] 1;
+crystalCollisionFrequency sum;
+frequencyModels
+{
+    turbulentPart
+    {
+        crystalCollisionFrequency turbulent;
+        Cturb 1.522;
+    }
+    shearPart
+    {
+        crystalCollisionFrequency shear;
+        Cshear 0.1666666666666667;
+    }
+}
+crystalAggregationEfficiency Ilievski;
+Utip 1;
+psi0 0.1;
+CIlievski 0;
+
+        }
+        aa
+        {
+            enabled true;
+            aggregationKernel crystalAggregation;
+Ca Ca [0 0 -1 0 0 0 0] 1;
+crystalCollisionFrequency sum;
+frequencyModels
+{
+    turbulentPart
+    {
+        crystalCollisionFrequency turbulent;
+        Cturb 1.522;
+    }
+    shearPart
+    {
+        crystalCollisionFrequency shear;
+        Cshear 0.1666666666666667;
+    }
+}
+crystalAggregationEfficiency Ilievski;
+Utip 1;
+psi0 0.1;
+CIlievski 0;
+
+        }
+    }
+    Pr 7;
+    Prt 0.85;
+    molarDiff 0;
+    Sct 0.7;
+    odeCoeffs
+    {
+        solveSources true;
+        solveOde true;
+        ATol 1e-14;
+        RTol 1e-9;
+        fac 0.9;
+        facMin 0.2;
+        facMax 2;
+        minLocalDt 1e-12;
+    }
+}

@@ -90,7 +90,7 @@ Foam::populationBalanceSubModels::growthModels::coolCrysSizeEffectGrowth
     (
         IOobject
         (
-            "growthRate",
+            dict.lookupOrDefault<word>("growthRateField", "growthRate"),
             mesh.time().timeName(),
             mesh,
             IOobject::NO_READ,

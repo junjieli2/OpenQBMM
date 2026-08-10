@@ -1,0 +1,89 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object populationBalanceProperties;
+}
+populationBalanceModel twoPopulationBalanceSystem;
+twoPopulationBalanceSystemCoeffs
+{
+    speciesCoupled true;
+    rhop rhop [1 -3 0 0 0 0 0] 2666;
+    shapeFactor 0.5235987755982988;
+    saturationModel
+    {
+        solutionSaturationModel K2SO4H2O;
+    }
+    singleCrystal
+    {
+        nucleation false;
+        growth true;
+        growthModel
+        {
+            growthModel coolCrysGrowth;
+            CgGrowth CgGrowth [0 1 -1 0 0 0 0] 9e-5;
+            powCoeff 1.95;
+        }
+        diffusionModel { diffusionModel none; }
+    }
+    agglomerate
+    {
+        growth true;
+        growthModel
+        {
+            growthModel coolCrysGrowth;
+            CgGrowth CgGrowth [0 1 -1 0 0 0 0] 4.5e-5;
+            powCoeff 1.95;
+        }
+        diffusionModel { diffusionModel none; }
+    }
+    aggregation
+    {
+        ss
+        {
+            enabled true;
+            aggregationKernel linnikovAggregation;
+            Ca Ca [0 0 -1 0 0 0 0] 1;
+            D1 0.1459;
+            D2 0.044;
+            K1D3 9.5446e-8;
+            simplified true;
+        }
+        sa
+        {
+            enabled true;
+            aggregationKernel linnikovAggregation;
+            Ca Ca [0 0 -1 0 0 0 0] 1;
+            D1 0.1459;
+            D2 0.044;
+            K1D3 9.5446e-8;
+            simplified true;
+        }
+        aa
+        {
+            enabled true;
+            aggregationKernel linnikovAggregation;
+            Ca Ca [0 0 -1 0 0 0 0] 1;
+            D1 0.1459;
+            D2 0.044;
+            K1D3 9.5446e-8;
+            simplified true;
+        }
+    }
+    Pr 7;
+    Prt 0.85;
+    molarDiff 0;
+    Sct 0.7;
+    odeCoeffs
+    {
+        solveSources true;
+        solveOde true;
+        ATol 1e-14;
+        RTol 1e-9;
+        fac 0.9;
+        facMin 0.2;
+        facMax 2;
+        minLocalDt 1e-12;
+    }
+}

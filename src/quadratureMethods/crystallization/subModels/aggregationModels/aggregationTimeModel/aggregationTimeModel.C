@@ -63,7 +63,11 @@ Foam::populationBalanceSubModels::aggregationKernels::aggregationTimeModel::aggr
     (
         IOobject
         (
-            "aggregationRate",
+            dict.lookupOrDefault<word>
+            (
+                "aggregationRateField",
+                "aggregationRate"
+            ),
             mesh.time().timeName(),
             mesh,
             IOobject::NO_READ,
@@ -74,7 +78,10 @@ Foam::populationBalanceSubModels::aggregationKernels::aggregationTimeModel::aggr
     ),
     growthRate_
     (
-        mesh.lookupObject<volScalarField>("growthRate")
+        mesh.lookupObject<volScalarField>
+        (
+            dict.lookupOrDefault<word>("growthRateField", "growthRate")
+        )
     ),
     sigma_
     (

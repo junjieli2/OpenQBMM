@@ -1,0 +1,47 @@
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object fvSchemes;
+}
+ddtSchemes
+{
+    default Euler;
+}
+gradSchemes
+{
+    default Gauss linear;
+}
+divSchemes
+{
+    default none;
+    div(phi,U) Gauss upwind;
+    div(phi,T) Gauss upwind;
+    div(phi,C) Gauss upwind;
+    div(phi,moment.0.singleCrystal) Gauss upwind;
+    div(phi,moment.1.singleCrystal) Gauss upwind;
+    div(phi,moment.2.singleCrystal) Gauss upwind;
+    div(phi,moment.3.singleCrystal) Gauss upwind;
+    div(phi,moment.4.singleCrystal) Gauss upwind;
+    div(phi,moment.5.singleCrystal) Gauss upwind;
+    div(phi,moment.0.agglomerate) Gauss upwind;
+    div(phi,moment.1.agglomerate) Gauss upwind;
+    div(phi,moment.2.agglomerate) Gauss upwind;
+    div(phi,moment.3.agglomerate) Gauss upwind;
+    div(phi,moment.4.agglomerate) Gauss upwind;
+    div(phi,moment.5.agglomerate) Gauss upwind;
+    div((nuEff*dev2(T(grad(U))))) Gauss linear;
+}
+laplacianSchemes
+{
+    default Gauss linear corrected;
+}
+interpolationSchemes
+{
+    default linear;
+}
+snGradSchemes
+{
+    default corrected;
+}

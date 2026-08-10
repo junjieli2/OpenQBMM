@@ -71,7 +71,10 @@ crystalAggregationEfficiencies::Hounslow::Hounslow
     qMin_(max(dict.lookupOrDefault<scalar>("qMin", 0.05), SMALL)),
     GField_
     (
-        mesh.lookupObject<volScalarField>("growthRate")
+        mesh.lookupObject<volScalarField>
+        (
+            dict.lookupOrDefault<word>("growthRateField", "growthRate")
+        )
     ),
     nu_
     (

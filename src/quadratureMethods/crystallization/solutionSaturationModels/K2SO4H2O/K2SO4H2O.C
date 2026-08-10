@@ -48,7 +48,10 @@ Foam::solutionSaturationModels::K2SO4H2O::K2SO4H2O
     const objectRegistry& db
 )
 :
-    solutionSaturationModel(db)
+    solutionSaturationModel(db),
+    A_(dict.lookupOrDefault<scalar>("A", -249.369)),
+    B_(dict.lookupOrDefault<scalar>("B", 0.3761)),
+    C_(dict.lookupOrDefault<scalar>("C", 0.0029415))
 {}
 
 
@@ -79,17 +82,12 @@ Foam::solutionSaturationModels::K2SO4H2O::Csat
 
     volScalarField& Csat = tCsat.ref();
 
-    // Krumgalz et al. K2SO4 solubility, with T in K and Csat in kg/m3.
-    const scalar A = -249.369;
-    const scalar B = 0.3761;
-    const scalar C = 0.0029415;
-
     // 1. Calculate Internal Field
     forAll(Csat, celli)
     {
         scalar TK = T[celli]; 
         
-        Csat[celli] = A + B*TK + C*pow(TK, 2);
+        Csat[celli] = A_ + B_*TK + C_*pow(TK, 2);
     }
 
     // 2. Calculate Boundary Field
@@ -103,7 +101,7 @@ Foam::solutionSaturationModels::K2SO4H2O::Csat
         forAll(Csatp, facei)
         {
             scalar TK = Tp[facei];
-            Csatp[facei] = A + B*TK + C*pow(TK, 2);
+            Csatp[facei] = A_ + B_*TK + C_*pow(TK, 2);
         }
     }
 

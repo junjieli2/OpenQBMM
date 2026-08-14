@@ -1,0 +1,158 @@
+#ifndef twoPopulationBalanceSystem_H
+#define twoPopulationBalanceSystem_H
+
+#include "populationBalanceModel.H"
+#include "quadratureApproximations.H"
+#include "univariateMomentAdvection.H"
+#include "nucleationModel.H"
+#include "growthModel.H"
+#include "aggregationKernel.H"
+#include "diffusionModel.H"
+
+namespace Foam
+{
+namespace PDFTransportModels
+{
+namespace populationBalanceModels
+{
+
+class twoPopulationBalanceSystem
+:
+    public populationBalanceModel
+{
+    dictionary singleCrystalDict_;
+    dictionary agglomerateDict_;
+    dictionary ssDict_;
+    dictionary saDict_;
+    dictionary aaDict_;
+
+    scalarQuadratureApproximation singleCrystalQuadrature_;
+    scalarQuadratureApproximation agglomerateQuadrature_;
+
+    autoPtr<univariateMomentAdvection> singleCrystalAdvection_;
+    autoPtr<univariateMomentAdvection> agglomerateAdvection_;
+
+    Switch nucleation_;
+    Switch singleGrowth_;
+    Switch agglomerateGrowth_;
+    Switch ssEnabled_;
+    Switch saEnabled_;
+    Switch aaEnabled_;
+    Switch speciesCoupled_;
+
+    autoPtr<populationBalanceSubModels::nucleationModel> nucleationModel_;
+    autoPtr<populationBalanceSubModels::growthModel> singleGrowthModel_;
+    autoPtr<populationBalanceSubModels::growthModel> agglomerateGrowthModel_;
+    autoPtr<populationBalanceSubModels::diffusionModel> singleDiffusionModel_;
+    autoPtr<populationBalanceSubModels::diffusionModel>
+        agglomerateDiffusionModel_;
+
+    volScalarField crossGrowthRate_;
+
+    autoPtr<populationBalanceSubModels::aggregationKernel> ssKernel_;
+    autoPtr<populationBalanceSubModels::aggregationKernel> saKernel_;
+    autoPtr<populationBalanceSubModels::aggregationKernel> aaKernel_;
+
+    dimensionedScalar rhop_;
+    dimensionedScalar shapeFactor_;
+
+    scalar ATol_;
+    scalar RTol_;
+    scalar fac_;
+    scalar facMin_;
+    scalar facMax_;
+    scalar minLocalDt_;
+    Switch solveSources_;
+    Switch solveOde_;
+    volScalarField localDt_;
+    label localDtAdjustments_;
+
+    volScalarField singleL10_;
+    volScalarField singleL32_;
+    volScalarField agglomerateL10_;
+    volScalarField agglomerateL32_;
+    volScalarField totalSolidMass_;
+    volScalarField SYact_;
+
+    void validateConfiguration() const;
+    void updateCrossGrowthRate();
+    void preUpdate();
+    void updateStatistics();
+    void calculateSpeciesTransfer(const scalarField& totalM3Before);
+
+    scalar aggregationKernelValue
+    (
+        const populationBalanceSubModels::aggregationKernel& kernel,
+        const volScalarNode& first,
+        const volScalarNode& second,
+        const label celli
+    ) const;
+
+    void calculateSources
+    (
+        const label celli,
+        scalarList& singleSources,
+        scalarList& agglomerateSources
+    );
+
+    void setCellMoments
+    (
+        const label celli,
+        const scalarList& singleValues,
+        const scalarList& agglomerateValues
+    );
+
+    bool updateCellQuadratures(const label celli, const bool fatal);
+    void solveCoupledSources();
+    label momentIndex
+    (
+        const scalarQuadratureApproximation& quadrature,
+        const label order
+    ) const;
+
+public:
+
+    TypeName("twoPopulationBalanceSystem");
+
+    twoPopulationBalanceSystem
+    (
+        const word& name,
+        const dictionary& dict,
+        const surfaceScalarField& phi
+    );
+
+    virtual ~twoPopulationBalanceSystem();
+
+    virtual scalar realizableCo() const;
+    virtual scalar CoNum() const;
+    virtual void solve();
+    virtual bool readIfModified();
+
+    bool speciesCoupled() const
+    {
+        return speciesCoupled_;
+    }
+
+    const volScalarField::Internal& SYact() const
+    {
+        return SYact_();
+    }
+
+    const scalarQuadratureApproximation& singleCrystalQuadrature() const
+    {
+        return singleCrystalQuadrature_;
+    }
+
+    const scalarQuadratureApproximation& agglomerateQuadrature() const
+    {
+        return agglomerateQuadrature_;
+    }
+};
+
+} // End namespace populationBalanceModels
+} // End namespace PDFTransportModels
+} // End namespace Foam
+
+#endif
+
+// ************************************************************************* //

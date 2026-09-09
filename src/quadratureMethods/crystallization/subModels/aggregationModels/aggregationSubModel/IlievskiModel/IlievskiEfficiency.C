@@ -69,6 +69,13 @@ crystalAggregationEfficiencies::Ilievski::Ilievski
     rho_(dict.lookupOrDefault<scalar>("rho", 1000.0)),
     L10_(dict.lookupOrDefault<scalar>("L10", 0.0)),
     useConfiguredL10_(dict.found("L10")),
+    L10Field_
+    (
+        mesh.lookupObject<volScalarField>
+        (
+            dict.lookupOrDefault<word>("L10Field", "L10.crystal")
+        )
+    ),
     GField_
     (
         mesh.lookupObject<volScalarField>
@@ -138,11 +145,12 @@ crystalAggregationEfficiencies::Ilievski::Pc
         return 0.0;
     }
 
-    // Use local crystal size or average of d1 and d2 as L10
+    // The published model uses the dynamic population number mean M1/M0.
+    // A configured scalar L10 is retained only for explicit sensitivity runs.
     const scalar L10_local =
         useConfiguredL10_
       ? max(L10_, SMALL)
-      : max(0.5 * (d1 + d2), SMALL);
+      : max(L10Field_[celli], SMALL);
 
     if (!std::isfinite(L10_local) || L10_local <= SMALL)
     {

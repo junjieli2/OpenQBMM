@@ -62,7 +62,22 @@ linnikovAggregation
     aggregationKernel(dict, mesh),
     D1_(dict.lookupOrDefault<scalar>("D1", 0.1459)),
     D2_(dict.lookupOrDefault<scalar>("D2", 0.044)),
-    K1D3_(dict.lookupOrDefault<scalar>("K1D3", 9.5446e-8)),
+    A_
+    (
+        dict.lookupOrDefault<scalar>
+        (
+            "A",
+            dict.lookupOrDefault<scalar>("K1D3", 2.38615e-12)
+        )
+    ),
+    useLogSupersaturation_
+    (
+        dict.lookupOrDefault<bool>("useLogSupersaturation", true)
+    ),
+    zeroBelowSaturation_
+    (
+        dict.lookupOrDefault<bool>("zeroBelowSaturation", true)
+    ),
     simplified_(dict.lookupOrDefault<bool>("simplified", true)),
     sigma_
     (
@@ -72,7 +87,9 @@ linnikovAggregation
     Info<< "    Linnikov aggregation model parameters:" << nl
         << "        D1 = " << D1_ << nl
         << "        D2 = " << D2_ << nl
-        << "        K1D3 = " << K1D3_ << nl
+        << "        A [m3/s] = " << A_ << nl
+        << "        useLogSupersaturation = " << useLogSupersaturation_ << nl
+        << "        zeroBelowSaturation = " << zeroBelowSaturation_ << nl
         << "        simplified = " << simplified_ << endl;
 }
 
@@ -101,18 +118,24 @@ Foam::populationBalanceSubModels::aggregationKernels::linnikovAggregation::Ka
         return 0.0;
     }
 
-    // Get local supersaturation
-    // sigma is supplied by the solver as the supersaturation field.
-    const scalar sigma = max(sigma_[celli], SMALL);
-
-    if (!std::isfinite(sigma))
+    // The solver field is the relative supersaturation C/Csat - 1.
+    const scalar sigma = sigma_[celli];
+    if (!std::isfinite(sigma) || (zeroBelowSaturation_ && sigma <= 0.0))
     {
         return 0.0;
     }
 
-    // Calculate the exponential term
-    // exp(-D1 / (sigma + D2))
-    const scalar expTerm = Foam::exp(-D1_ / (sigma + D2_));
+    const scalar drivingForce =
+        useLogSupersaturation_
+      ? Foam::log(1.0 + max(sigma, -1.0 + SMALL))
+      : sigma;
+    const scalar denominator = drivingForce + D2_;
+    if (!std::isfinite(denominator) || denominator <= SMALL)
+    {
+        return 0.0;
+    }
+
+    const scalar expTerm = Foam::exp(-D1_ / denominator);
 
     if (!std::isfinite(expTerm))
     {
@@ -125,7 +148,7 @@ Foam::populationBalanceSubModels::aggregationKernels::linnikovAggregation::Ka
     {
         // Simplified first-order model:
         // Ka = K1 * D3 * exp(-D1 / (sigma + D2))
-        Ka_value = K1D3_ * expTerm;
+        Ka_value = A_ * expTerm;
     }
     else
     {
@@ -133,7 +156,7 @@ Foam::populationBalanceSubModels::aggregationKernels::linnikovAggregation::Ka
         // Ka = K1 * (1 - exp(-D3 * exp(-D1 / (sigma + D2))))
         // Note: K1D3 = K1 * D3, so we need to separate them
         // For simplicity, assume K1 = 1 and use K1D3 as D3
-        Ka_value = 1.0 - Foam::exp(-K1D3_ * expTerm);
+        Ka_value = 1.0 - Foam::exp(-A_ * expTerm);
     }
 
     // Apply coefficient

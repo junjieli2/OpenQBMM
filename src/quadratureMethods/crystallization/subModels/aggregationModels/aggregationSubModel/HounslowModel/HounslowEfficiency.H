@@ -113,14 +113,61 @@ class Hounslow
         //- Lower bound used only for contact-length evaluation inside the taper
         scalar qMin_;
 
+        //- Use the published size-ratio contact factor q(lambda); when false,
+        //  use q=1 for the explicit structural-sensitivity scenario.
+        bool useSizeRatioQ_;
+
+        //- Evaluate growth at the colliding-pair contact length instead of
+        //  using the population-mean growth-rate field.
+        bool usePairGrowth_;
+
+        //- Pair-size growth-law coefficient [m/s]
+        dimensionedScalar pairCgGrowth_;
+
+        //- Pair-size growth-law supersaturation exponent
+        scalar pairGrowthPow_;
+
+        //- Critical and capped supersaturations for the pair growth law
+        scalar pairSigmaGrowthCrit_;
+        scalar pairSigmaMax_;
+
+        //- Pair-size growth-rate cap [m/s]
+        dimensionedScalar pairMaxGrowth_;
+
+        //- Pair-size growth inhibition length [m] and exponent
+        dimensionedScalar pairLc_;
+        scalar pairQSize_;
+
+        //- Use the dimensionless reference-state form of the strength
+        //  variable. The legacy M/Mg form remains the default.
+        bool useDimensionlessStrength_;
+        scalar PiC_;
+        scalar referenceLength_;
+        scalar referenceGrowthRate_;
+        scalar referenceShearRate_;
+        scalar referenceViscosity_;
+
         //- Reference to growth rate field (from growthModel)
         const volScalarField& GField_;
+
+        //- Reference to supersaturation for pair-specific growth
+        const volScalarField& sigma_;
 
         //- Reference to kinematic viscosity field
         const volScalarField& nu_;
 
         //- Reference to turbulent dissipation rate
         const volScalarField& epsilon_;
+
+
+    // Private Member Functions
+
+        //- Evaluate the size-dependent growth law at the contact length
+        scalar pairGrowthRate
+        (
+            const scalar contactLength,
+            const label celli
+        ) const;
 
 
 public:

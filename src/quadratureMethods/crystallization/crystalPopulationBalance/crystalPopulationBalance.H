@@ -174,6 +174,21 @@ class crystalPopulationBalance
         //- Active solute-mass source for the concentration equation
         volScalarField SYact_;
 
+        //- Whether camera-observed moments are written
+        Switch observedMoment_;
+
+        //- Particle length at 50% detection probability
+        dimensionedScalar detectionL50_;
+
+        //- Width of the detection transition in natural-log length
+        scalar detectionLogWidth_;
+
+        //- Moments after applying the camera detection probability
+        PtrList<volScalarField> observedMoments_;
+
+        //- Sauter mean length calculated from observed moments
+        autoPtr<volScalarField> observedD32_;
+
         dimensionedScalar d_nucleation_;
 
     // Private member functions
@@ -212,7 +227,10 @@ class crystalPopulationBalance
 
         void updateCharacteristicLengths();
 
-        void calcSpeciesTransfer();
+        //- Apply the camera observation operator to the reconstructed nodes
+        void updateObservedMoments();
+
+        void calcSpeciesTransfer(const scalarField& m3BeforeSources);
 
 public:
 

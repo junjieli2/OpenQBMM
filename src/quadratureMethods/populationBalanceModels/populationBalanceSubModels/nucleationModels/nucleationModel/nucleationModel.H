@@ -116,6 +116,15 @@ public:
 
     // Member Functions
 
+        //- Whether this source creates new crystal mass from dissolved solute.
+        //  Population-transfer models override this and return false so that
+        //  their third-moment source is not counted twice in the species
+        //  balance.
+        virtual bool contributesToSpeciesTransfer() const
+        {
+            return true;
+        }
+
         //- Nucleation rate
         virtual scalar nucleationSource
         (

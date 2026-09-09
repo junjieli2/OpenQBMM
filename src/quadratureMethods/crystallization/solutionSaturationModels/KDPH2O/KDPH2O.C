@@ -9,7 +9,24 @@ License
     This file is derivative work of OpenFOAM and is distributed under the
     GNU General Public License, version 3 or later.
 
+Data from 
+@article{majumderPredictionControlCrystal2013,
+  title = {Prediction and Control of Crystal Shape Distribution in the Presence of Crystal Growth Modifiers},
+  author = {Majumder, Aniruddha and Nagy, Zoltan K.},
+  year = 2013,
+  month = sep,
+  journal = {Chemical Engineering Science},
+  volume = {101},
+  pages = {593--602},
+  issn = {0009-2509},
+  doi = {10.1016/j.ces.2013.07.017},
+  urldate = {2025-08-09},
+  langid = {english},
+  keywords = {Additive,Crystal growth modifiers,Crystal shape distribution,Impurity,Morphological population balance model,Shape control}
+}
+
 \*---------------------------------------------------------------------------*/
+
 
 #include "KDPH2O.H"
 #include "addToRunTimeSelectionTable.H"

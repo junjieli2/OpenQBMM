@@ -25,8 +25,12 @@
             scalar rate = SYact[celli];
             if (rate > 0.0 && currentC > smallC)
             {
-                k[celli] = rate / currentC;
-                Su[celli] = 0.0;
+                // calcSpeciesTransfer already limits rate to 90% of C/dt.
+                // Applying that limited rate explicitly makes the dissolved-
+                // species decrement exactly equal to the discretely observed
+                // solid M3 increment; an implicit Sp term would under-consume.
+                k[celli] = 0.0;
+                Su[celli] = -rate;
             }
             else if (rate < 0.0)
             {

@@ -16,6 +16,7 @@ subModels/nucleationModels/areaNucleation/areaNucleation.C
 subModels/nucleationModels/CNTNucleation/CNTNucleation.C
 subModels/nucleationModels/solidContentNucleation/solidContentNucleation.C
 subModels/nucleationModels/borsosPrimaryNucleation/borsosPrimaryNucleation.C
+subModels/nucleationModels/visibleBoundaryFlux/visibleBoundaryFlux.C
 
 subModels/impurityAdsorptionModels/impurityAdsorptionModel/impurityAdsorptionModel.C
 subModels/impurityAdsorptionModels/competitiveAdsorption/competitiveAdsorption.C

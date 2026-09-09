@@ -32,15 +32,15 @@ Description
 
     The kernel assumes size-independent aggregation and is calculated as:
     \f[
-        K_a = K_1 \left( 1 - e^{-D_3 \cdot e^{-\frac{D_1}{\sigma + D_2}}} \right)
+        K_a = K_1 \left( 1 - e^{-D_3 \cdot e^{-\frac{D_1}{\ln(1+\sigma) + D_2}}} \right)
     \f]
 
     Or in simplified form (first-order expansion):
     \f[
-        K_a = K_1 D_3 e^{-\frac{D_1}{\sigma + D_2}}
+        K_a = K_1 D_3 e^{-\frac{D_1}{\ln(1+\sigma) + D_2}}
     \f]
 
-    where \f$\sigma = \ln(C/C_0)\f$ is the relative supersaturation.
+    where the solver field is \f$\sigma=C/C_{sat}-1\f$, so the source driving force is \f$\ln(1+\sigma)\f$.
 
     Model parameters:
     \f[
@@ -66,7 +66,7 @@ Description
     \endvartable
 
     Reference values from Linnikov (2008):
-    - K2SO4: D1 = 0.1459, D2 = 0.044, K1*D3 = 9.5446e-8
+    - K2SO4: D1 = 0.1459, D2 = 0.044, A = 2.38615e-12 m3/s after conversion from the 25 mL source experiment
     - KNO3:  D1 = 0.1459, D2 = 0.044, K1*D3 = 4.4544e-7
 
     Reference:
@@ -116,7 +116,14 @@ class linnikovAggregation
 
         //- Combined parameter K1*D3
         //  K1*D3 = K1 * I0 * tk
-        scalar K1D3_;
+        //- Concentration-based PBM kernel amplitude [m3/s]
+        scalar A_;
+
+        //- Interpret solver sigma as relative supersaturation and use log(1+sigma)
+        bool useLogSupersaturation_;
+
+        //- Disable aggregation at and below saturation
+        bool zeroBelowSaturation_;
 
         //- Use simplified (first-order) model
         bool simplified_;

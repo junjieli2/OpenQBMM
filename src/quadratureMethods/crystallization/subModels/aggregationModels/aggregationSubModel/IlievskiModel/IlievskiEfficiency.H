@@ -91,6 +91,7 @@ class Ilievski
         scalar L10_;
         bool useConfiguredL10_;
 
+        const volScalarField& L10Field_;
         const volScalarField& GField_;
         const volScalarField& nu_;
         const volScalarField& epsilon_;

@@ -69,12 +69,70 @@ crystalAggregationEfficiencies::Hounslow::Hounslow
     rhoFluid_(dict.lookupOrDefault<scalar>("rhoFluid", 1000.0)),
     qBlend_(max(dict.lookupOrDefault<scalar>("qBlend", 0.05), SMALL)),
     qMin_(max(dict.lookupOrDefault<scalar>("qMin", 0.05), SMALL)),
+    useSizeRatioQ_(dict.lookupOrDefault<bool>("useSizeRatioQ", true)),
+    usePairGrowth_(dict.lookupOrDefault<bool>("usePairGrowth", false)),
+    pairCgGrowth_
+    (
+        dict.lookupOrDefault
+        (
+            "pairCgGrowth",
+            dimensionedScalar("pairCgGrowth", dimLength/dimTime, 1e-6)
+        )
+    ),
+    pairGrowthPow_(dict.lookupOrDefault<scalar>("pairGrowthPow", 1.0)),
+    pairSigmaGrowthCrit_
+    (
+        dict.lookupOrDefault<scalar>("pairSigmaGrowthCrit", 0.0)
+    ),
+    pairSigmaMax_(dict.lookupOrDefault<scalar>("pairSigmaMax", 10.0)),
+    pairMaxGrowth_
+    (
+        dict.lookupOrDefault
+        (
+            "pairMaxGrowth",
+            dimensionedScalar("pairMaxGrowth", dimLength/dimTime, 1e-6)
+        )
+    ),
+    pairLc_
+    (
+        dict.lookupOrDefault
+        (
+            "pairLc",
+            dimensionedScalar("pairLc", dimLength, 200e-6)
+        )
+    ),
+    pairQSize_(dict.lookupOrDefault<scalar>("pairQSize", 2.0)),
+    useDimensionlessStrength_
+    (
+        dict.lookupOrDefault<bool>("useDimensionlessStrength", false)
+    ),
+    PiC_(dict.lookupOrDefault<scalar>("PiC", 1.0)),
+    referenceLength_
+    (
+        max(dict.lookupOrDefault<scalar>("referenceLength", 1e-4), SMALL)
+    ),
+    referenceGrowthRate_
+    (
+        max(dict.lookupOrDefault<scalar>("referenceGrowthRate", 1e-6), SMALL)
+    ),
+    referenceShearRate_
+    (
+        max(dict.lookupOrDefault<scalar>("referenceShearRate", 290.4737509655563), SMALL)
+    ),
+    referenceViscosity_
+    (
+        max(dict.lookupOrDefault<scalar>("referenceViscosity", 1e-3), SMALL)
+    ),
     GField_
     (
         mesh.lookupObject<volScalarField>
         (
             dict.lookupOrDefault<word>("growthRateField", "growthRate")
         )
+    ),
+    sigma_
+    (
+        mesh.lookupObject<volScalarField>("sigma")
     ),
     nu_
     (
@@ -98,6 +156,39 @@ crystalAggregationEfficiencies::Hounslow::~Hounslow()
 
 Foam::scalar
 Foam::populationBalanceSubModels::aggregationKernels::
+crystalAggregationEfficiencies::Hounslow::pairGrowthRate
+(
+    const scalar contactLength,
+    const label celli
+) const
+{
+    const scalar localSigma = sigma_[celli];
+    if (!std::isfinite(localSigma))
+    {
+        return 0.0;
+    }
+
+    const scalar sigmaEff =
+        max(min(localSigma, pairSigmaMax_) - pairSigmaGrowthCrit_, 0.0);
+    if (sigmaEff <= SMALL)
+    {
+        return 0.0;
+    }
+
+    const scalar L = max(contactLength, SMALL);
+    const scalar Gbase =
+        pairCgGrowth_.value()*Foam::pow(sigmaEff, pairGrowthPow_);
+    scalar sizeFactor =
+        1.0/(1.0 + Foam::pow(L/max(pairLc_.value(), SMALL), pairQSize_));
+    sizeFactor = max(min(sizeFactor, 1.0), 0.0);
+
+    const scalar G = min(Gbase*sizeFactor, pairMaxGrowth_.value());
+    return std::isfinite(G) && G > SMALL ? G : scalar(0.0);
+}
+
+
+Foam::scalar
+Foam::populationBalanceSubModels::aggregationKernels::
 crystalAggregationEfficiencies::Hounslow::Pc
 (
     const scalar& d1,
@@ -106,40 +197,35 @@ crystalAggregationEfficiencies::Hounslow::Pc
     const label celli
 ) const
 {
+    (void)Ur;
+
     if (!std::isfinite(d1) || !std::isfinite(d2) || d1 <= SMALL || d2 <= SMALL)
     {
         return 0.0;
     }
 
-    // Get local values
-    const scalar G = max(GField_[celli], scalar(0.0));
     const scalar nu = max(nu_[celli], SMALL);
     const scalar eps = max(epsilon_[celli], SMALL);
-
-    if (!std::isfinite(G) || !std::isfinite(nu) || !std::isfinite(eps) || G <= SMALL)
+    if (!std::isfinite(nu) || !std::isfinite(eps))
     {
         return 0.0;
     }
 
-    // Calculate shear rate from turbulent dissipation
-    // gamma_dot = sqrt(epsilon / nu)
-    const scalar gammaDot = Foam::sqrt(eps / nu);
-    if (!std::isfinite(gammaDot))
+    const scalar gammaDot = Foam::sqrt(eps/nu);
+    if (!std::isfinite(gammaDot) || gammaDot <= SMALL)
     {
         return 0.0;
     }
 
-    // Calculate lambda (size ratio)
-    const scalar lambda = max(d1, d2) / max(min(d1, d2), SMALL);
+    const scalar lambda = max(d1, d2)/max(min(d1, d2), SMALL);
     if (!std::isfinite(lambda) || lambda <= SMALL)
     {
         return 0.0;
     }
 
-    // Calculate q factor. Outside the Hounslow contact-length range,
-    // return zero sticking. Near the boundary, apply a smooth taper and
-    // evaluate L with a small q floor to avoid a near-zero-length singularity.
-    const scalar q = 1.0 - 0.328 * mag(Foam::log(lambda));
+    const scalar q = useSizeRatioQ_
+      ? 1.0 - 0.328*mag(Foam::log(lambda))
+      : 1.0;
     if (!std::isfinite(q) || q <= 0.0)
     {
         return 0.0;
@@ -147,42 +233,55 @@ crystalAggregationEfficiencies::Hounslow::Pc
 
     const scalar blendFraction = min(1.0, max(0.0, q/qBlend_));
     const scalar qTaper = sqr(blendFraction)*(3.0 - 2.0*blendFraction);
-    const scalar qEffective = max(q, qMin_);
-
-    // Calculate effective contact length L
-    const scalar L = qEffective * Foam::sqrt(d1 * d2);
+    const scalar L = max(q, qMin_)*Foam::sqrt(d1*d2);
     if (!std::isfinite(L) || L <= SMALL || !std::isfinite(qTaper))
     {
         return 0.0;
     }
 
-    // Dynamic viscosity of the liquid phase: mu = rhoFluid * nu
-    const scalar mu = rhoFluid_ * nu;
-    if (!std::isfinite(mu) || mu <= SMALL)
+    const scalar G = usePairGrowth_
+      ? pairGrowthRate(L, celli)
+      : max(GField_[celli], scalar(0.0));
+    if (!std::isfinite(G) || G <= SMALL)
     {
         return 0.0;
     }
 
-    // Calculate dimensionless parameter M
-    // M = (sigma_Y * G * L*) / (gamma_dot^2 * mu * L^2)
-    const scalar M = (Lstar_sigmaY_ * G)
-                   / (sqr(gammaDot) * mu * sqr(L) + SMALL);
-
-    if (!std::isfinite(M) || M <= SMALL || Mg_ <= SMALL || sigmag_ <= 1.0)
+    const scalar mu = rhoFluid_*nu;
+    if (!std::isfinite(mu) || mu <= SMALL || sigmag_ <= 1.0)
     {
         return 0.0;
     }
 
-    // Calculate efficiency using error function
-    // psi = 0.5 * (1 + erf((ln(M/Mg)) / (sqrt(2) * ln(sigmag))))
-    const scalar arg = Foam::log(M / Mg_) / (Foam::sqrt(2.0) * Foam::log(sigmag_));
+    scalar strength = 0.0;
+    if (useDimensionlessStrength_)
+    {
+        const scalar shearRatio = gammaDot/referenceShearRate_;
+        const scalar lengthRatio = L/referenceLength_;
+        const scalar denominator =
+            sqr(shearRatio)*(mu/referenceViscosity_)*sqr(lengthRatio);
+        strength = PiC_*(G/referenceGrowthRate_)/(denominator + SMALL);
+    }
+    else
+    {
+        const scalar M =
+            (Lstar_sigmaY_*G)/(sqr(gammaDot)*mu*sqr(L) + SMALL);
+        strength = Mg_ > SMALL ? M/Mg_ : scalar(0.0);
+    }
+
+    if (!std::isfinite(strength) || strength <= SMALL)
+    {
+        return 0.0;
+    }
+
+    const scalar arg =
+        Foam::log(strength)/(Foam::sqrt(2.0)*Foam::log(sigmag_));
     if (!std::isfinite(arg))
     {
         return 0.0;
     }
-    const scalar psi = qTaper*0.5 * (1.0 + Foam::erf(arg));
 
-    // Bound efficiency between 0 and 1
+    const scalar psi = qTaper*0.5*(1.0 + Foam::erf(arg));
     if (!std::isfinite(psi))
     {
         return 0.0;

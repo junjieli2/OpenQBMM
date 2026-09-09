@@ -265,7 +265,10 @@ Foam::populationBalanceSubModels::growthModels::coolCrysSizeEffectGrowth
 )
 {
     activeCelli_ = celli;
-    return growthModel::phaseSpaceConvection(momentOrder, celli, quadrature);
+    const scalar result =
+        growthModel::phaseSpaceConvection(momentOrder, celli, quadrature);
+    updateMeanGrowthRate(celli, quadrature);
+    return result;
 }
 
 
@@ -279,7 +282,10 @@ Foam::populationBalanceSubModels::growthModels::coolCrysSizeEffectGrowth
 )
 {
     activeCelli_ = celli;
-    return growthModel::phaseSpaceConvection(momentOrder, celli, quadrature);
+    const scalar result =
+        growthModel::phaseSpaceConvection(momentOrder, celli, quadrature);
+    updateMeanGrowthRate(celli, quadrature);
+    return result;
 }
 
 // ************************************************************************* //

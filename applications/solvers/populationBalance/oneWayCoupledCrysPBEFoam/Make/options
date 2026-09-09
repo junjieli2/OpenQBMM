@@ -61,16 +61,17 @@ EXE_LIBS = \
     -lfiniteArea \
     $(LIB_THERMO_TOOLS) \
     -L$(FOAM_MODULE_LIBBIN) \
+    -Wl,--no-as-needed \
     -Wl,--start-group \
-    -lquadratureNode \
-    -lmomentSets \
-    -lmomentInversion \
-    -lfieldMomentInversion \
-    -lquadratureApproximation \
-    -lmomentAdvection \
-    -lPDFTransportModel \
-    -lpopulationBalance \
-    -lvandermonde \
-    -lcrystalPopuBal \
-    -lfieldMomentInversion \
+    $(FOAM_MODULE_LIBBIN)/libquadratureNode.so \
+    $(FOAM_MODULE_LIBBIN)/libmomentSets.so \
+    $(FOAM_MODULE_LIBBIN)/libmomentInversion.so \
+    $(FOAM_MODULE_LIBBIN)/libfieldMomentInversion.so \
+    $(FOAM_MODULE_LIBBIN)/libquadratureApproximation.so \
+    $(FOAM_MODULE_LIBBIN)/libmomentAdvection.so \
+    $(FOAM_MODULE_LIBBIN)/libPDFTransportModel.so \
+    $(FOAM_MODULE_LIBBIN)/libpopulationBalance.so \
+    $(FOAM_MODULE_LIBBIN)/libvandermonde.so \
+    $(FOAM_MODULE_LIBBIN)/libcrystalPopuBal.so \
+    $(FOAM_MODULE_LIBBIN)/libfieldMomentInversion.so \
     -Wl,--end-group

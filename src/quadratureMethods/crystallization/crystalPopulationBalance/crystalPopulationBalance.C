@@ -56,6 +56,55 @@ namespace populationBalanceModels
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
+namespace
+{
+Foam::Switch observedMomentEnabled(const Foam::dictionary& dict)
+{
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault<Foam::Switch>
+        (
+            "enabled",
+            true
+        )
+      : Foam::Switch(false);
+}
+
+
+Foam::dimensionedScalar detectionL50(const Foam::dictionary& dict)
+{
+    const Foam::dimensionedScalar defaultValue
+    (
+        "L50",
+        Foam::dimLength,
+        50.0e-6
+    );
+
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault
+        (
+            "L50",
+            defaultValue
+        )
+      : defaultValue;
+}
+
+
+Foam::scalar detectionLogWidth(const Foam::dictionary& dict)
+{
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault<Foam::scalar>
+        (
+            "logWidth",
+            0.25
+        )
+      : 0.25;
+}
+}
+
+
 Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
 ::crystalPopulationBalance
 (
@@ -193,6 +242,11 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
         dimensionedScalar("zero", dimDensity/dimTime, 0.0),
         fvPatchFieldBase::zeroGradientType()
     ),
+    observedMoment_(observedMomentEnabled(dict)),
+    detectionL50_(detectionL50(dict)),
+    detectionLogWidth_(detectionLogWidth(dict)),
+    observedMoments_(),
+    observedD32_(),
     d_nucleation_
     (
         "d_nucleation",
@@ -200,6 +254,81 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
         dict.lookupOrDefault<scalar>("d_nucleation", dict.lookupOrDefault<scalar>("deltaWidth", 1.0e-6))
     )
 {
+
+    if (observedMoment_)
+    {
+        if (detectionL50_.value() <= 0.0)
+        {
+            FatalIOErrorInFunction(dict)
+                << "observationModel.L50 must be positive, found "
+                << detectionL50_ << exit(FatalIOError);
+        }
+
+        if (detectionLogWidth_ <= SMALL)
+        {
+            FatalIOErrorInFunction(dict)
+                << "observationModel.logWidth must be positive, found "
+                << detectionLogWidth_ << exit(FatalIOError);
+        }
+
+        const volScalarMomentFieldSet& moments = quadrature_.moments();
+        const labelListList& momentOrders = quadrature_.momentOrders();
+
+        observedMoments_.setSize(moments.size());
+        observedD32_.reset
+        (
+            new volScalarField
+            (
+                IOobject
+                (
+                    "observedD32.crystal",
+                    phi.mesh().time().timeName(),
+                    phi.mesh(),
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                phi.mesh(),
+                dimLength,
+                fvPatchFieldBase::zeroGradientType()
+            )
+        );
+
+        forAll(moments, momenti)
+        {
+            observedMoments_.set
+            (
+                momenti,
+                new volScalarField
+                (
+                    IOobject
+                    (
+                        IOobject::groupName
+                        (
+                            word("observedMoment.")
+                          + Foam::name(momentOrders[momenti][0]),
+                            name
+                        ),
+                        phi.mesh().time().timeName(),
+                        phi.mesh(),
+                        IOobject::NO_READ,
+                        IOobject::AUTO_WRITE
+                    ),
+                    phi.mesh(),
+                    dimensionedScalar
+                    (
+                        "zero",
+                        moments[momenti].dimensions(),
+                        0.0
+                    ),
+                    fvPatchFieldBase::zeroGradientType()
+                )
+            );
+        }
+
+        Info<< "Camera observation model enabled:" << nl
+            << "  L50 = " << detectionL50_.value() << " m" << nl
+            << "  logWidth = " << detectionLogWidth_ << endl;
+    }
 
     if (saturation_ )
     {
@@ -279,6 +408,8 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
         L32_.correctBoundaryConditions();
         d_.correctBoundaryConditions();
     }
+
+    updateObservedMoments();
 
 }
 
@@ -503,9 +634,92 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
     d_.correctBoundaryConditions();
 }
 
+
 void
 Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
-::calcSpeciesTransfer()
+::updateObservedMoments()
+{
+    if (!observedMoment_)
+    {
+        return;
+    }
+
+    const mappedPtrList<volScalarNode>& nodes = quadrature_.nodes();
+    const labelListList& momentOrders = quadrature_.momentOrders();
+
+    forAll(observedMoments_, momenti)
+    {
+        observedMoments_[momenti] = dimensionedScalar
+        (
+            "zero",
+            observedMoments_[momenti].dimensions(),
+            0.0
+        );
+    }
+
+    const scalar logL50 = Foam::log(detectionL50_.value());
+
+    forAll(nodes, nodei)
+    {
+        const volScalarField& weight = nodes[nodei].weight();
+        const volScalarField& length = nodes[nodei].abscissae()[0];
+
+        forAll(weight, celli)
+        {
+            const scalar Li = max(length[celli], VSMALL);
+            const scalar logDistance =
+                (Foam::log(Li) - logL50)/detectionLogWidth_;
+            const scalar boundedDistance =
+                max(min(logDistance, scalar(60)), scalar(-60));
+            const scalar detectionProbability =
+                1.0/(1.0 + Foam::exp(-boundedDistance));
+
+            forAll(observedMoments_, momenti)
+            {
+                const label order = momentOrders[momenti][0];
+                observedMoments_[momenti][celli] +=
+                    weight[celli]
+                   *detectionProbability
+                   *Foam::pow(Li, order);
+            }
+        }
+    }
+
+    label m2Index = -1;
+    label m3Index = -1;
+
+    forAll(momentOrders, momenti)
+    {
+        if (momentOrders[momenti][0] == 2)
+        {
+            m2Index = momenti;
+        }
+        else if (momentOrders[momenti][0] == 3)
+        {
+            m3Index = momenti;
+        }
+    }
+
+    forAll(observedD32_(), celli)
+    {
+        observedD32_()[celli] =
+            m2Index >= 0 && m3Index >= 0
+          ? observedMoments_[m3Index][celli]
+           /(observedMoments_[m2Index][celli] + VSMALL)
+          : 0.0;
+    }
+
+    forAll(observedMoments_, momenti)
+    {
+        observedMoments_[momenti].correctBoundaryConditions();
+    }
+    observedD32_().correctBoundaryConditions();
+}
+
+
+void
+Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
+::calcSpeciesTransfer(const scalarField& m3BeforeSources)
 {
     SYact_ = dimensionedScalar("zero", dimDensity/dimTime, 0.0);
 
@@ -542,15 +756,36 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
         
         forAll(d_, celli)
         {
-            scalar source = growthModel_->phaseSpaceConvection
-            (
-                momentOrder,
-                celli,
-                quadrature_
-            );
+            scalar source = 0.0;
 
-            if(nucleation_)
-                source += nucleationModel_->nucleationSource(momentOrder[0], celli);
+            if
+            (
+                nucleation_
+             && !nucleationModel_->contributesToSpeciesTransfer()
+            )
+            {
+                // Couple dissolved solute to the actual M3 increment produced
+                // by the ODE solve, then remove the visibility-transfer part.
+                // Aggregation is M3-conservative, so the remainder is the
+                // physically coupled growth/dissolution increment.
+                source =
+                    (moments[3][celli] - m3BeforeSources[celli])*invDt
+                  - nucleationModel_->nucleationSource(momentOrder[0], celli);
+            }
+            else
+            {
+                source = growthModel_->phaseSpaceConvection
+                (
+                    momentOrder,
+                    celli,
+                    quadrature_
+                );
+
+                if (nucleation_)
+                {
+                    source += nucleationModel_->nucleationSource(momentOrder[0], celli);
+                }
+            }
 
             scalar SYact_final = 0.0;
 
@@ -662,6 +897,14 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
 
         this->checkCorrectMoments();
 
+        // Store transported M3 before local ODE sources so a population-
+        // transfer nucleation model can be excluded from the solute balance
+        // while growth is coupled from the actual, discretely integrated M3.
+        const scalarField m3BeforeSources
+        (
+            quadrature_.moments()[3].primitiveField()
+        );
+
         quadrature_.updateQuadrature();
 
         if (solveMomentSources())
@@ -670,8 +913,9 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
         }
 
         updateCharacteristicLengths();
+        updateObservedMoments();
 
-        calcSpeciesTransfer();
+        calcSpeciesTransfer(m3BeforeSources);
 
     }
     else
@@ -679,6 +923,7 @@ Foam::PDFTransportModels::populationBalanceModels::crystalPopulationBalance
 
         PtrList<volScalarNode>& nodes = quadrature_.nodes();
         nodes[0].weight() = quadrature_.moments()[0];
+        updateObservedMoments();
     
     }
 

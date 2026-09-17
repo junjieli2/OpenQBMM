@@ -26,6 +26,9 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "realizableOdeSolver.H"
+#include "PstreamReduceOps.H"
+
+#include <cmath>
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -49,12 +52,38 @@ Foam::realizableOdeSolver<momentType, nodeType>::realizableOdeSolver
         (
             "realizableOde:localDt",
             mesh.time().timeName(),
-            mesh
+            mesh,
+            IOobject::READ_IF_PRESENT,
+            IOobject::AUTO_WRITE
         ),
         mesh,
         mesh.time().deltaT()
     ),
     localDtAdjustments_(0),
+    scaleMoments_
+    (
+        dict.subDict("odeCoeffs").lookupOrDefault("momentScaling", false)
+    ),
+    ATolNorm_
+    (
+        dict.subDict("odeCoeffs").lookupOrDefault("ATolNorm", 1.0e-12)
+    ),
+    momentScales_(),
+    diagOde_
+    (
+        dict.subDict("odeCoeffs").lookupOrDefault("diagOde", false)
+    ),
+    diagInterval_
+    (
+        dict.subDict("odeCoeffs").lookupOrDefault<label>("diagInterval", 1)
+    ),
+    diagStep_(0),
+    nSubStepsMax_(0),
+    nSubStepsSum_(0),
+    nRejected_(0),
+    localDtMin_(0),
+    localDtMax_(0),
+    errorMax_(0),
     solveSources_
     (
         dict.subDict("odeCoeffs").lookupOrDefault("solveSources", true)
@@ -63,7 +92,50 @@ Foam::realizableOdeSolver<momentType, nodeType>::realizableOdeSolver
     (
         dict.subDict("odeCoeffs").lookupOrDefault("solveOde", true)
     )
-{}
+{
+    // A restarted run must not silently inherit a corrupt or foreign local
+    // step field: the cached step controls the ODE sub-stepping and therefore
+    // the numerical trajectory.
+    if (localDt_.size() != mesh_.nCells())
+    {
+        FatalIOErrorInFunction(dict)
+            << "Field " << localDt_.name() << " has "
+            << localDt_.size() << " entries but the mesh has "
+            << mesh_.nCells() << " cells." << exit(FatalIOError);
+    }
+
+    // Values above the current global step are legal: solve() clamps the
+    // cached step with min(localDt_[celli], globalDt). Only non-finite or
+    // non-positive entries are unusable.
+    label nBad = 0;
+    scalar firstBad = 0;
+    label firstBadCell = -1;
+
+    forAll(localDt_, celli)
+    {
+        const scalar value = localDt_[celli];
+
+        if (!std::isfinite(value) || value <= 0.0)
+        {
+            if (nBad == 0)
+            {
+                firstBad = value;
+                firstBadCell = celli;
+            }
+            nBad++;
+        }
+    }
+
+    if (nBad)
+    {
+        FatalIOErrorInFunction(dict)
+            << "Field " << localDt_.name() << " has " << nBad
+            << " invalid entries; first at cell " << firstBadCell
+            << " with value " << firstBad
+            << ". Every entry must be finite and positive."
+            << exit(FatalIOError);
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
@@ -89,6 +161,19 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
     label nMoments = quadrature.nMoments();
     scalar globalDt = mesh_.time().deltaT().value();
     const labelListList& momentOrders = quadrature.momentOrders();
+
+    // Reset the local solver diagnostics recorded by this call
+    nSubStepsMax_ = 0;
+    nSubStepsSum_ = 0;
+    nRejected_ = 0;
+    localDtMin_ = GREAT;
+    localDtMax_ = 0.0;
+    errorMax_ = 0.0;
+
+    if (scaleMoments_)
+    {
+        initialiseMomentScales(moments, nMoments);
+    }
 
     //- Use Euler explicit to update moments due to sources
     if (!solveOde_)
@@ -158,6 +243,11 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
         // Initialize the local step
         scalar localDt = min(localDt_[celli], globalDt);
 
+        localDtMin_ = min(localDtMin_, localDt);
+        localDtMax_ = max(localDtMax_, localDt);
+
+        label cellSubSteps = 0;
+
         // Initialize RK parameters
         scalarList k1(nMoments, Zero);
         scalarList k2(nMoments, Zero);
@@ -179,6 +269,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
             do
             {
                 nItt++;
+                cellSubSteps++;
 
                 // First intermediate update
                 bool nullSource =  true;
@@ -216,6 +307,15 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
 
                 if (nullSource)
                 {
+                    // With a vanishing source every stage update is zero and so
+                    // is the embedded error. diff23 persists across cells, so it
+                    // must be cleared explicitly; otherwise the error test below
+                    // would score this cell with another cell's estimate.
+                    forAll(diff23, mi)
+                    {
+                        diff23[mi] = Zero;
+                    }
+
                     break;
                 }
 
@@ -282,20 +382,36 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
 
                 if
                 (
+                    realizableUpdate1
+                 && realizableUpdate2
+                 && realizableUpdate3
+                 && !acceptMomentUpdate(celli)
+                )
+                {
+                    // The trial step is realizable but the model rejected it,
+                    // for example because it would consume more solute than the
+                    // current split step has available. Route it through the
+                    // same recovery as a realizability failure.
+                    realizableUpdate3 = false;
+                }
+
+                if
+                (
                     !realizableUpdate1
                  || !realizableUpdate2
                  || !realizableUpdate3
                 )
                 {
-                    // Avoid spamming the terminal when not realizable
+                    // Avoid spamming the terminal on repeated rejections
                     if (localDtAdjustments_ == 0)
                     {
-                        Info << "Not realizable, adjusting local timestep." 
-                             << nl
+                        Info << "Local ODE step rejected, adjusting local "
+                             << "timestep." << nl
                              << "This may take a while." << endl;
                     }
 
                     localDtAdjustments_++;
+                    nRejected_++;
 
                     forAll(oldMoments, mi)
                     {
@@ -329,25 +445,42 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
             scalar error(0);
             scalar maxChange(0);
 
+            const bool useScales =
+                scaleMoments_ && momentScales_.size() == nMoments;
+
             for (label mi = 0; mi < nMoments; mi++)
             {
-                // Calculate the scaling factor
+                // Calculate the scaling factor. The relative term is always
+                // present; the absolute term is either the raw ATol_ or, with
+                // momentScaling enabled, ATolNorm_ referred to the magnitude of
+                // that moment. A single raw ATol cannot serve a moment set
+                // spanning many orders of magnitude: for the small moments it
+                // exceeds every admissible step error, which silently disables
+                // the embedded error control.
                 scalar scalei =
-                    ATol_
-                  + max
+                    max
                     (
                         mag(moments[mi][celli]), mag(oldMoments[mi])
-                    )*RTol_;
+                    )*RTol_
+                  + (useScales ? momentScales_[mi]*ATolNorm_ : ATol_);
+
+                scalei = max(scalei, VSMALL);
 
                 // Update the error
                 error += sqr(diff23[mi]/scalei);
 
                 // Update the maximum change in moments
-                maxChange 
+                maxChange
                     = max(maxChange, mag(moments[mi][celli] - oldMoments[mi]));
             }
 
             error = sqrt(error/nMoments);
+            errorMax_ = max(errorMax_, error);
+
+            // Fac_/cbrt(error) is the step-size factor. Flooring the radicand
+            // keeps a vanishing or non-finite estimate from trapping a
+            // floating-point divide instead of taking the normal accept path.
+            const scalar errRoot = pow(max(error, VSMALL), 1.0/3.0);
 
             if (error < SMALL)
             {
@@ -418,7 +551,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
             else if (error < 1)
             {
                 localT += localDt;
-                localDt *= min(facMax_, max(facMin_, fac_/pow(error, 1.0/3.0)));
+                localDt *= min(facMax_, max(facMin_, fac_/errRoot));
                 scalar maxLocalDt = max(globalDt - localT, scalar(0));
                 localDt = min(maxLocalDt, localDt);
 
@@ -439,7 +572,9 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
             else
             {
                 localDt *=
-                    min(scalar(1), max(facMin_, fac_/pow(error, 1.0/3.0)));
+                    min(scalar(1), max(facMin_, fac_/errRoot));
+
+                nRejected_++;
 
                 forAll(oldMoments, mi)
                 {
@@ -450,6 +585,9 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 quadrature.updateLocalQuadrature(celli);
             }
         }
+
+        nSubStepsSum_ += cellSubSteps;
+        nSubStepsMax_ = max(nSubStepsMax_, cellSubSteps);
     }
 
     forAll(moments, mi)
@@ -458,6 +596,82 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
     }
 
     quadrature.updateBoundaryQuadrature();
+
+    diagStep_++;
+
+    if (diagOde_ && diagInterval_ > 0 && (diagStep_ % diagInterval_) == 0)
+    {
+        label nCells = moments[0].size();
+        reduce(nCells, sumOp<label>());
+        reduce(nSubStepsMax_, maxOp<label>());
+        reduce(nSubStepsSum_, sumOp<label>());
+        reduce(nRejected_, sumOp<label>());
+        reduce(localDtMin_, minOp<scalar>());
+        reduce(localDtMax_, maxOp<scalar>());
+        reduce(errorMax_, maxOp<scalar>());
+
+        Info<< "realizableOde: t = " << mesh_.time().timeName()
+            << " globalDt = " << globalDt
+            << " maxSubSteps = " << nSubStepsMax_
+            << " sumSubSteps = " << nSubStepsSum_
+            << " nCells = " << nCells
+            << " rejected = " << nRejected_
+            << " localDtMin = " << localDtMin_
+            << " localDtMax = " << localDtMax_
+            << " errorMax = " << errorMax_ << endl;
+    }
+}
+
+
+template<class momentType, class nodeType>
+bool Foam::realizableOdeSolver<momentType, nodeType>::acceptMomentUpdate
+(
+    const label celli
+)
+{
+    return true;
+}
+
+
+template<class momentType, class nodeType>
+void Foam::realizableOdeSolver<momentType, nodeType>::initialiseMomentScales
+(
+    const momentFieldSetType& moments,
+    const label nMoments
+) const
+{
+    if (momentScales_.size() == nMoments)
+    {
+        return;
+    }
+
+    momentScales_.setSize(nMoments, 1.0);
+
+    // A single fixed scale per moment order: the largest magnitude that moment
+    // attains anywhere on the mesh at the time the scales are first needed.
+    // Deriving it once keeps the error control from drifting with the solution,
+    // which would make the accepted step history-dependent.
+    for (label mi = 0; mi < nMoments; mi++)
+    {
+        scalar cellMax = 0.0;
+
+        forAll(moments[mi], celli)
+        {
+            const scalar value = mag(moments[mi][celli]);
+
+            if (std::isfinite(value))
+            {
+                cellMax = max(cellMax, value);
+            }
+        }
+
+        reduce(cellMax, maxOp<scalar>());
+
+        momentScales_[mi] = max(cellMax, VSMALL);
+    }
+
+    Info<< "realizableOde: moment scales initialised to " << momentScales_
+        << endl;
 }
 
 
@@ -468,6 +682,10 @@ void Foam::realizableOdeSolver<momentType, nodeType>
     const dictionary& odeDict = dict.subDict("odeCoeffs");
     solveSources_ = odeDict.lookupOrDefault<Switch>("solveSources", true);
     solveOde_ = odeDict.lookupOrDefault<Switch>("solveOde", true);
+    scaleMoments_ = odeDict.lookupOrDefault<Switch>("momentScaling", false);
+    diagOde_ = odeDict.lookupOrDefault<Switch>("diagOde", false);
+    diagInterval_ = odeDict.lookupOrDefault<label>("diagInterval", 1);
+    ATolNorm_ = odeDict.lookupOrDefault("ATolNorm", 1.0e-12);
 
     (odeDict.lookup("ATol")) >> ATol_;
     (odeDict.lookup("RTol")) >> RTol_;

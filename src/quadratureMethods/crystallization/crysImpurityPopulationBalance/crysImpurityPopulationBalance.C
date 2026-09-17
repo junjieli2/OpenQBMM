@@ -245,8 +245,22 @@ crysImpurityPopulationBalance::crysImpurityPopulationBalance
         dimensionedScalar("zero", dimDensity/dimTime, 0.0),
         fvPatchFieldBase::zeroGradientType()
     ),
-    crystallizationSourceScale_(phi.mesh().nCells(), 1.0)
+    crystallizationSourceScale_(phi.mesh().nCells(), 1.0),
+    speciesConsumptionLimit_
+    (
+        dict.lookupOrDefault<scalar>("speciesConsumptionLimit", 0.9)
+    ),
+    m30StepStart_(phi.mesh().nCells(), 0.0),
+    m01StepStart_(phi.mesh().nCells(), 0.0),
+    soluteStepBudget_(phi.mesh().nCells(), 0.0),
+    impurityStepBudget_(phi.mesh().nCells(), 0.0)
 {
+    if (speciesConsumptionLimit_ <= 0 || speciesConsumptionLimit_ > 1)
+    {
+        FatalIOErrorInFunction(dict)
+            << "speciesConsumptionLimit must lie in (0, 1], not "
+            << speciesConsumptionLimit_ << exit(FatalIOError);
+    }
     if (nucleation_)
     {
         nucleationModel_ = populationBalanceSubModels::nucleationModel::New
@@ -695,6 +709,25 @@ crysImpurityPopulationBalance::updateCellMomentSource(const label celli)
 
     const labelList o30({3, 0});
     const labelList o01({0, 1});
+
+    // Budget remaining in this split step. The source is evaluated at every
+    // stage of the local integrator, so subtracting what the step has already
+    // produced keeps the limiter cumulative. Limiting only the instantaneous
+    // rate against the start-of-step solute lets a sequence of locally legal
+    // sub-steps together remove more solute than is present, which is how the
+    // solute field reached negative values.
+    const scalar hostGenerated =
+        rhop_.value()*shapeFactor_.value()
+       *max(quadrature_.moments()(o30)[celli] - m30StepStart_[celli], scalar(0));
+    const scalar impurityGenerated =
+        mRef_.value()
+       *max(quadrature_.moments()(o01)[celli] - m01StepStart_[celli], scalar(0));
+
+    const scalar hostAvailable =
+        max(soluteStepBudget_[celli] - hostGenerated, scalar(0));
+    const scalar impurityAvailable =
+        max(impurityStepBudget_[celli] - impurityGenerated, scalar(0));
+
     const scalar hostRate =
         rhop_.value()*shapeFactor_.value()
        *max(crystallizationSource(o30, celli, quadrature_), scalar(0));
@@ -707,35 +740,47 @@ crysImpurityPopulationBalance::updateCellMomentSource(const label celli)
         scalar(SMALL)
     );
 
+    // Both caps fall continuously to zero as the remaining budget is used up,
+    // so an exhausted cell needs no separate branch. Comparing the rates with
+    // SMALL would not be safe here in any case: the impurity rate carries the
+    // mRef factor and is legitimately far below SMALL.
     scalar scale = 1.0;
 
     if (hostRate > SMALL)
     {
-        scale = min
-        (
-            scale,
-            0.9*max
-            (
-                impurityAdsorptionModel_->solute()[celli],
-                scalar(0)
-            )*invDt/hostRate
-        );
+        scale = min(scale, hostAvailable*invDt/hostRate);
     }
 
     if (impurityRate > SMALL)
     {
-        scale = min
-        (
-            scale,
-            0.9*max
-            (
-                impurityAdsorptionModel_->impurity()[celli],
-                scalar(0)
-            )*invDt/impurityRate
-        );
+        scale = min(scale, impurityAvailable*invDt/impurityRate);
     }
 
     crystallizationSourceScale_[celli] = max(scale, scalar(0));
+}
+
+
+bool Foam::PDFTransportModels::populationBalanceModels::
+crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
+{
+    if (!speciesCoupled_ || (!nucleation_ && !growth_))
+    {
+        return true;
+    }
+
+    const labelList o30({3, 0});
+    const labelList o01({0, 1});
+
+    const scalar hostGenerated =
+        rhop_.value()*shapeFactor_.value()
+       *max(quadrature_.moments()(o30)[celli] - m30StepStart_[celli], scalar(0));
+    const scalar impurityGenerated =
+        mRef_.value()
+       *max(quadrature_.moments()(o01)[celli] - m01StepStart_[celli], scalar(0));
+
+    return
+        hostGenerated <= soluteStepBudget_[celli]
+     && impurityGenerated <= impurityStepBudget_[celli];
 }
 
 
@@ -1097,6 +1142,40 @@ crysImpurityPopulationBalance::calcSpeciesTransfer
 
     SYact_.correctBoundaryConditions();
     SIact_.correctBoundaryConditions();
+
+    // How close the split step came to the positivity limit. A value near one
+    // means the step size, not the kinetics, is setting the transfer and the
+    // result is no longer a converged solution of the model.
+    const scalar dt = mesh.time().deltaTValue();
+    scalar maxHostFraction = 0.0;
+    scalar maxImpurityFraction = 0.0;
+
+    forAll(SYact_, celli)
+    {
+        const scalar hostAvailable =
+            max(impurityAdsorptionModel_->solute()[celli], scalar(0));
+        const scalar impurityAvailable =
+            max(impurityAdsorptionModel_->impurity()[celli], scalar(0));
+
+        if (hostAvailable > SMALL)
+        {
+            maxHostFraction =
+                max(maxHostFraction, SYact_[celli]*dt/hostAvailable);
+        }
+
+        if (impurityAvailable > SMALL)
+        {
+            maxImpurityFraction =
+                max(maxImpurityFraction, SIact_[celli]*dt/impurityAvailable);
+        }
+    }
+
+    reduce(maxHostFraction, maxOp<scalar>());
+    reduce(maxImpurityFraction, maxOp<scalar>());
+
+    Info<< "Species step consumption fraction (limit "
+        << speciesConsumptionLimit_ << ") host = " << maxHostFraction
+        << ", impurity = " << maxImpurityFraction << endl;
 }
 
 
@@ -1121,6 +1200,10 @@ crysImpurityPopulationBalance::solve()
     // synchronized explicitly if a dynamic mesh changes the cell count.
     crystallizationSourceScale_.setSize(phi_.mesh().nCells(), 1.0);
     crystallizationSourceScale_ = 1.0;
+    m30StepStart_.setSize(phi_.mesh().nCells(), 0.0);
+    m01StepStart_.setSize(phi_.mesh().nCells(), 0.0);
+    soluteStepBudget_.setSize(phi_.mesh().nCells(), 0.0);
+    impurityStepBudget_.setSize(phi_.mesh().nCells(), 0.0);
 
     subModelsPreUpdate();
     momentAdvection_->update();
@@ -1160,6 +1243,26 @@ crysImpurityPopulationBalance::solve()
     (
         quadrature_.moments()(labelList({0, 1})).primitiveField()
     );
+
+    // Freeze the budgets for the source sub-step. The solute and impurity
+    // fields are only advanced by their own equations after this point, so
+    // these are the amounts actually available to the reaction step.
+    m30StepStart_ = m30Before;
+    m01StepStart_ = m01Before;
+
+    if (speciesCoupled_)
+    {
+        const volScalarField& solute = impurityAdsorptionModel_->solute();
+        const volScalarField& impurity = impurityAdsorptionModel_->impurity();
+
+        forAll(soluteStepBudget_, celli)
+        {
+            soluteStepBudget_[celli] =
+                speciesConsumptionLimit_*max(solute[celli], scalar(0));
+            impurityStepBudget_[celli] =
+                speciesConsumptionLimit_*max(impurity[celli], scalar(0));
+        }
+    }
 
     if (solveMomentSources())
     {

@@ -90,6 +90,17 @@ class crysImpurityPopulationBalance
     //- Per-cell common limiter for all nucleation and growth sources
     scalarField crystallizationSourceScale_;
 
+    //- Fraction of the available solute a single split step may consume
+    scalar speciesConsumptionLimit_;
+
+    //- Host and impurity moments at the start of the current split step
+    scalarField m30StepStart_;
+    scalarField m01StepStart_;
+
+    //- Solute and impurity available to the current split step
+    scalarField soluteStepBudget_;
+    scalarField impurityStepBudget_;
+
     void validateConfiguration() const;
     void subModelsPreUpdate();
     void updateStatistics();
@@ -137,6 +148,9 @@ class crysImpurityPopulationBalance
     bool solveMomentOde() const;
 
     virtual void updateCellMomentSource(const label celli);
+
+    //- Reject a realizable local step that would overrun the species budget
+    virtual bool acceptMomentUpdate(const label celli);
 
     virtual scalar cellMomentSource
     (

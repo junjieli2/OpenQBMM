@@ -97,6 +97,52 @@ class realizableOdeSolver
         //- Number of times localDt has been adjusted
         label localDtAdjustments_;
 
+        //- Solve the embedded error test in normalised moment variables
+        Switch scaleMoments_;
+
+        //- Dimensionless absolute tolerance used by the normalised error test
+        scalar ATolNorm_;
+
+        //- Per-moment normalisation scales (empty until first solve())
+        mutable scalarList momentScales_;
+
+        //- Report per-step local solver statistics
+        Switch diagOde_;
+
+        //- Report every this many global steps when diagOde is on
+        label diagInterval_;
+
+        //- Global steps seen since construction, used by diagInterval_
+        mutable label diagStep_;
+
+        //- Maximum number of local steps taken by any cell in the last solve
+        mutable label nSubStepsMax_;
+
+        //- Total number of local steps taken in the last solve
+        mutable label nSubStepsSum_;
+
+        //- Number of rejected local steps in the last solve
+        mutable label nRejected_;
+
+        //- Smallest local step attempted in the last solve
+        mutable scalar localDtMin_;
+
+        //- Largest local step attempted in the last solve
+        mutable scalar localDtMax_;
+
+        //- Largest embedded error estimate seen in the last solve
+        mutable scalar errorMax_;
+
+
+    // Private member functions
+
+        //- Populate momentScales_ from the current moment magnitudes
+        void initialiseMomentScales
+        (
+            const momentFieldSetType& moments,
+            const label nMoments
+        ) const;
+
 
 protected:
 
@@ -112,6 +158,13 @@ protected:
 
         //- Calculate source term for moment equation in the specified cell
         virtual void updateCellMomentSource(const label celli) = 0;
+
+        //- Additional acceptance test for a completed local step.
+        //  Derived models use this to reject a step that is realizable but
+        //  unphysical, for example one that would consume more solute than the
+        //  current global step has available. Returning false halves the local
+        //  step exactly as a realizability failure does.
+        virtual bool acceptMomentUpdate(const label celli);
 
         //- Calculate source term for moment equation in the specified cell
         virtual scalar cellMomentSource
@@ -146,6 +199,51 @@ public:
 
         //- Read coefficients from dictionary
         void read(const dictionary& dict);
+
+
+        // Local solver diagnostics from the most recent solve()
+
+            //- Maximum number of local steps taken by any cell
+            label nSubStepsMax() const
+            {
+                return nSubStepsMax_;
+            }
+
+            //- Total number of local steps taken over all cells
+            label nSubStepsSum() const
+            {
+                return nSubStepsSum_;
+            }
+
+            //- Number of rejected local steps
+            label nRejected() const
+            {
+                return nRejected_;
+            }
+
+            //- Smallest local step attempted
+            scalar localDtMin() const
+            {
+                return localDtMin_;
+            }
+
+            //- Largest local step attempted
+            scalar localDtMax() const
+            {
+                return localDtMax_;
+            }
+
+            //- Largest embedded error estimate
+            scalar errorMax() const
+            {
+                return errorMax_;
+            }
+
+            //- Per-moment normalisation scales (unit values when disabled)
+            const scalarList& momentScales() const
+            {
+                return momentScales_;
+            }
 };
 
 

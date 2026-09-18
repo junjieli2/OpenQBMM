@@ -746,12 +746,12 @@ crysImpurityPopulationBalance::updateCellMomentSource(const label celli)
     // mRef factor and is legitimately far below SMALL.
     scalar scale = 1.0;
 
-    if (hostRate > SMALL)
+    if (hostRate > 0.0)
     {
         scale = min(scale, hostAvailable*invDt/hostRate);
     }
 
-    if (impurityRate > SMALL)
+    if (impurityRate > 0.0)
     {
         scale = min(scale, impurityAvailable*invDt/impurityRate);
     }
@@ -778,9 +778,26 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
         mRef_.value()
        *max(quadrature_.moments()(o01)[celli] - m01StepStart_[celli], scalar(0));
 
+    const scalar theta = min
+    (
+        max(impurityAdsorptionModel_->theta(celli), scalar(0)),
+        scalar(1)
+    );
+    const scalar maximumImpurityHostRatio =
+        eta_.value()*rhoi_.value()*surfaceFactor_.value()*theta
+       /(3.0*rhop_.value()*shapeFactor_.value());
+    const scalar consistencyTolerance =
+        1.0e-8*max
+        (
+            max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),
+            scalar(VSMALL)
+        );
+
     return
         hostGenerated <= soluteStepBudget_[celli]
-     && impurityGenerated <= impurityStepBudget_[celli];
+     && impurityGenerated <= impurityStepBudget_[celli]
+     && impurityGenerated
+        <= maximumImpurityHostRatio*hostGenerated + consistencyTolerance;
 }
 
 
@@ -1119,23 +1136,39 @@ crysImpurityPopulationBalance::calcSpeciesTransfer
     {
         const scalar deltaM30 = m30[celli] - m30Before[celli];
         const scalar deltaM01 = m01[celli] - m01Before[celli];
-        const scalar m30Tolerance =
-            SMALL*max(mag(m30Before[celli]), scalar(1));
-        const scalar m01Tolerance =
-            SMALL*max(mag(m01Before[celli]), scalar(1));
+        const scalar hostMassDelta =
+            rhop_.value()*shapeFactor_.value()*deltaM30;
+        const scalar impurityMassDelta = mRef_.value()*deltaM01;
+        const scalar hostMassTolerance =
+            100.0*SMALL*max(soluteStepBudget_[celli], scalar(VSMALL));
+        const scalar impurityMassTolerance =
+            100.0*SMALL*max(impurityStepBudget_[celli], scalar(VSMALL));
+
+        if
+        (
+            hostMassDelta < -hostMassTolerance
+         || impurityMassDelta < -impurityMassTolerance
+        )
+        {
+            FatalErrorInFunction
+                << "Negative crystallization source increment in cell " << celli
+                << ": host mass=" << hostMassDelta
+                << ", impurity mass=" << impurityMassDelta
+                << abort(FatalError);
+        }
 
         SYact_[celli] =
             rhop_.value()*shapeFactor_.value()
            *max
             (
-                deltaM30 > m30Tolerance ? deltaM30*invDt : 0.0,
+                deltaM30 > 0.0 ? deltaM30*invDt : 0.0,
                 scalar(0)
             );
         SIact_[celli] =
             mRef_.value()
            *max
             (
-                deltaM01 > m01Tolerance ? deltaM01*invDt : 0.0,
+                deltaM01 > 0.0 ? deltaM01*invDt : 0.0,
                 scalar(0)
             );
     }

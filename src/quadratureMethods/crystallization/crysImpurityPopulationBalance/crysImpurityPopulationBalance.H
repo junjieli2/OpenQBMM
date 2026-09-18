@@ -75,6 +75,7 @@ class crysImpurityPopulationBalance
     dimensionedScalar shapeFactor_;
     dimensionedScalar sizeRef_;
     dimensionedScalar mRef_;
+    scalar sourceConsistencyATol_;
     dimensionedScalar eta_;
     dimensionedScalar rhoi_;
     dimensionedScalar surfaceFactor_;

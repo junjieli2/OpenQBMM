@@ -121,6 +121,10 @@ crysImpurityPopulationBalance::crysImpurityPopulationBalance
         dimMass,
         rhop_.value()*shapeFactor_.value()*pow3(sizeRef_.value())
     ),
+    sourceConsistencyATol_
+    (
+        readScalar(dict.subDict("odeCoeffs").lookup("ATol"))
+    ),
     eta_
     (
         dimensionedScalar::getOrDefault
@@ -786,12 +790,15 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
     const scalar maximumImpurityHostRatio =
         eta_.value()*rhoi_.value()*surfaceFactor_.value()*theta
        /(3.0*rhop_.value()*shapeFactor_.value());
-    const scalar consistencyTolerance =
+    const scalar consistencyTolerance = max
+    (
+        mRef_.value()*sourceConsistencyATol_,
         1.0e-8*max
         (
             max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),
             scalar(VSMALL)
-        );
+        )
+    );
 
     return
         hostGenerated <= soluteStepBudget_[celli]

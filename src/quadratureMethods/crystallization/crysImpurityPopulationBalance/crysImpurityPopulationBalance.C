@@ -795,7 +795,11 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
     const scalar consistencyTolerance = max
     (
         10.0*mRef_.value()*sourceConsistencyATol_,
-        1.0e-8*max
+        // Raw-moment reconstruction is ill-conditioned near a degenerate
+        // conditional quadrature.  Use an inventory-relative guard above
+        // that reconstruction floor; the split-step physical audit remains
+        // tighter and independent of this local adaptive-step decision.
+        1.0e-6*max
         (
             max
             (

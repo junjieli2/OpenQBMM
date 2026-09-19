@@ -792,7 +792,7 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
        /(3.0*rhop_.value()*shapeFactor_.value());
     const scalar consistencyTolerance = max
     (
-        mRef_.value()*sourceConsistencyATol_,
+        10.0*mRef_.value()*sourceConsistencyATol_,
         1.0e-8*max
         (
             max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),

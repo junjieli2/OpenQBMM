@@ -781,59 +781,22 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
     const scalar impurityGenerated =
         mRef_.value()
        *max(quadrature_.moments()(o01)[celli] - m01StepStart_[celli], scalar(0));
-    const scalar hostInventory =
-        rhop_.value()*shapeFactor_.value()
-       *max(m30StepStart_[celli], scalar(0));
-    const scalar impurityInventory =
-        mRef_.value()*max(m01StepStart_[celli], scalar(0));
-
-    // Strict source ceiling over the admissible coverage range theta in [0,1].
-    // The tighter instantaneous-theta bound is audited after the split step.
-    const scalar maximumImpurityHostRatio =
-        eta_.value()*rhoi_.value()*surfaceFactor_.value()
-       /(3.0*rhop_.value()*shapeFactor_.value());
-    const scalar consistencyTolerance = max
-    (
-        10.0*mRef_.value()*sourceConsistencyATol_,
-        // Raw-moment reconstruction is ill-conditioned near a degenerate
-        // conditional quadrature.  Use an inventory-relative guard above
-        // that reconstruction floor; the split-step physical audit remains
-        // tighter and independent of this local adaptive-step decision.
-        1.0e-6*max
-        (
-            max
-            (
-                max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),
-                max(impurityInventory, maximumImpurityHostRatio*hostInventory)
-            ),
-            scalar(VSMALL)
-        )
-    );
 
     if
     (
         hostGenerated > soluteStepBudget_[celli]
      || impurityGenerated > impurityStepBudget_[celli]
-     || impurityGenerated
-        > maximumImpurityHostRatio*hostGenerated + consistencyTolerance
     )
     {
         Pout<< "Moment source rejected in cell " << celli
             << ": host=" << hostGenerated
             << "/" << soluteStepBudget_[celli]
             << ", impurity=" << impurityGenerated
-            << "/" << impurityStepBudget_[celli]
-            << ", maximum ratio=" << maximumImpurityHostRatio
-            << ", tolerance=" << consistencyTolerance
-            << ", host inventory=" << hostInventory
-            << ", impurity inventory=" << impurityInventory
-            << endl;
+            << "/" << impurityStepBudget_[celli] << endl;
     }
     return
         hostGenerated <= soluteStepBudget_[celli]
-     && impurityGenerated <= impurityStepBudget_[celli]
-     && impurityGenerated
-        <= maximumImpurityHostRatio*hostGenerated + consistencyTolerance;
+     && impurityGenerated <= impurityStepBudget_[celli];
 }
 
 
@@ -1167,6 +1130,9 @@ crysImpurityPopulationBalance::calcSpeciesTransfer
         quadrature_.moments()(labelList({3, 0}));
     const volScalarMoment& m01 =
         quadrature_.moments()(labelList({0, 1}));
+    const scalar maximumImpurityHostRatio =
+        eta_.value()*rhoi_.value()*surfaceFactor_.value()
+       /(3.0*rhop_.value()*shapeFactor_.value());
 
     forAll(SYact_, celli)
     {
@@ -1179,6 +1145,30 @@ crysImpurityPopulationBalance::calcSpeciesTransfer
             100.0*SMALL*max(soluteStepBudget_[celli], scalar(VSMALL));
         const scalar impurityMassTolerance =
             100.0*SMALL*max(impurityStepBudget_[celli], scalar(VSMALL));
+
+        const scalar hostInventory =
+            rhop_.value()*shapeFactor_.value()
+           *max(m30Before[celli], scalar(0));
+        const scalar impurityInventory =
+            mRef_.value()*max(m01Before[celli], scalar(0));
+        const scalar physicalScale = max
+        (
+            max
+            (
+                impurityInventory,
+                maximumImpurityHostRatio*hostInventory
+            ),
+            max
+            (
+                max(impurityMassDelta, scalar(0)),
+                maximumImpurityHostRatio*max(hostMassDelta, scalar(0))
+            )
+        );
+        const scalar consistencyTolerance = max
+        (
+            10.0*mRef_.value()*sourceConsistencyATol_,
+            1.0e-6*max(physicalScale, scalar(VSMALL))
+        );
 
         if
         (
@@ -1193,6 +1183,22 @@ crysImpurityPopulationBalance::calcSpeciesTransfer
                 << abort(FatalError);
         }
 
+        if
+        (
+            impurityMassDelta
+          > maximumImpurityHostRatio*max(hostMassDelta, scalar(0))
+          + consistencyTolerance
+        )
+        {
+            FatalErrorInFunction
+                << "Impurity incorporation exceeds the analytic source "
+                << "ceiling in cell " << celli
+                << ": host mass=" << hostMassDelta
+                << ", impurity mass=" << impurityMassDelta
+                << ", maximum ratio=" << maximumImpurityHostRatio
+                << ", tolerance=" << consistencyTolerance
+                << abort(FatalError);
+        }
         SYact_[celli] =
             rhop_.value()*shapeFactor_.value()
            *max

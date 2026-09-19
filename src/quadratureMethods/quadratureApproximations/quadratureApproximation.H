@@ -202,7 +202,8 @@ public:
             bool updateLocalQuadrature
             (
                 label celli,
-                bool fatalErrorOnFailedRealizabilityTest = true
+                bool fatalErrorOnFailedRealizabilityTest = true,
+                bool updateMomentsFromQuadrature = true
             );
 };
 

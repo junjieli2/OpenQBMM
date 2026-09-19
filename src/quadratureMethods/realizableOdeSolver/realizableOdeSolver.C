@@ -229,7 +229,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
         // from an ill-conditioned conditional quadrature: that projection can
         // destroy exact source invariants such as paired host/impurity mass.
         // Store the primary moments to recover from a failed step.
-        quadrature.updateLocalQuadrature(celli);
+        quadrature.updateLocalQuadrature(celli, true, false);
 
         scalarList oldMoments(nMoments, Zero);
 
@@ -304,7 +304,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 }
 
                 realizableUpdate1 =
-                        quadrature.updateLocalQuadrature(celli, false);
+                        quadrature.updateLocalQuadrature(celli, false, false);
 
 
                 if (nullSource)
@@ -346,7 +346,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 }
 
                 realizableUpdate2 =
-                    quadrature.updateLocalQuadrature(celli, false);
+                    quadrature.updateLocalQuadrature(celli, false, false);
 
 
                 // Third moment update
@@ -377,7 +377,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 }
 
                 realizableUpdate3 =
-                    quadrature.updateLocalQuadrature(celli, false);
+                    quadrature.updateLocalQuadrature(celli, false, false);
 
 
                 if
@@ -419,7 +419,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                     }
 
                     // Updating local quadrature with old moments
-                    quadrature.updateLocalQuadrature(celli);
+                    quadrature.updateLocalQuadrature(celli, true, false);
 
                     localDt /= 2.0;
 
@@ -582,7 +582,7 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 }
 
                 // Updating local quadrature with old moments
-                quadrature.updateLocalQuadrature(celli);
+                quadrature.updateLocalQuadrature(celli, true, false);
             }
         }
 

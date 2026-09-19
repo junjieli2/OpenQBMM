@@ -334,7 +334,12 @@ void Foam::quadratureApproximation<momentType, nodeType>
 
 template<class momentType, class nodeType>
 bool Foam::quadratureApproximation<momentType, nodeType>
-::updateLocalQuadrature(label celli, bool fatalErrorOnFailedRealizabilityTest)
+::updateLocalQuadrature
+(
+    label celli,
+    bool fatalErrorOnFailedRealizabilityTest,
+    bool updateMomentsFromQuadrature
+)
 {
     bool realizable = momentFieldInverter_().invertLocalMoments
     (
@@ -346,7 +351,10 @@ bool Foam::quadratureApproximation<momentType, nodeType>
         return realizable;
     }
 
-    moments_.updateLocalMoments(celli);
+    if (updateMomentsFromQuadrature)
+    {
+        moments_.updateLocalMoments(celli);
+    }
 
     return realizable;
 }

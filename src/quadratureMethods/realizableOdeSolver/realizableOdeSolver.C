@@ -589,6 +589,15 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
         nSubStepsSum_ += cellSubSteps;
         nSubStepsMax_ = max(nSubStepsMax_, cellSubSteps);
     }
+    // The accepted moments are the primary state and the adaptive stages no
+    // longer project them back onto the quadrature. Refresh the stored nodes
+    // from the accepted state, without overwriting it, so saved node fields
+    // remain consistent with the moment fields for post-processing.
+    forAll(moments[0], celli)
+    {
+        quadrature.updateLocalQuadrature(celli, false, false);
+    }
+
 
     forAll(moments, mi)
     {

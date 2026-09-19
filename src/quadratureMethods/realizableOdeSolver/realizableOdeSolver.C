@@ -224,9 +224,12 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
     {
         //Info << "OLD MOMENTS" << moments << endl;
 
-        // Storing old moments to recover from failed step
+        // Moments are the primary ODE state. Invert them to obtain nodes for
+        // source evaluation, but do not overwrite them with moments rebuilt
+        // from an ill-conditioned conditional quadrature: that projection can
+        // destroy exact source invariants such as paired host/impurity mass.
+        // Store the primary moments to recover from a failed step.
         quadrature.updateLocalQuadrature(celli);
-        quadrature.updateLocalMoments(celli);
 
         scalarList oldMoments(nMoments, Zero);
 
@@ -303,7 +306,6 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 realizableUpdate1 =
                         quadrature.updateLocalQuadrature(celli, false);
 
-                quadrature.updateLocalMoments(celli);
 
                 if (nullSource)
                 {
@@ -346,7 +348,6 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 realizableUpdate2 =
                     quadrature.updateLocalQuadrature(celli, false);
 
-                quadrature.updateLocalMoments(celli);
 
                 // Third moment update
                 updateCellMomentSource(celli);
@@ -378,7 +379,6 @@ void Foam::realizableOdeSolver<momentType, nodeType>::solve
                 realizableUpdate3 =
                     quadrature.updateLocalQuadrature(celli, false);
 
-                quadrature.updateLocalMoments(celli);
 
                 if
                 (

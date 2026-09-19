@@ -781,25 +781,50 @@ crysImpurityPopulationBalance::acceptMomentUpdate(const label celli)
     const scalar impurityGenerated =
         mRef_.value()
        *max(quadrature_.moments()(o01)[celli] - m01StepStart_[celli], scalar(0));
+    const scalar hostInventory =
+        rhop_.value()*shapeFactor_.value()
+       *max(m30StepStart_[celli], scalar(0));
+    const scalar impurityInventory =
+        mRef_.value()*max(m01StepStart_[celli], scalar(0));
 
-    const scalar theta = min
-    (
-        max(impurityAdsorptionModel_->theta(celli), scalar(0)),
-        scalar(1)
-    );
+    // Strict source ceiling over the admissible coverage range theta in [0,1].
+    // The tighter instantaneous-theta bound is audited after the split step.
     const scalar maximumImpurityHostRatio =
-        eta_.value()*rhoi_.value()*surfaceFactor_.value()*theta
+        eta_.value()*rhoi_.value()*surfaceFactor_.value()
        /(3.0*rhop_.value()*shapeFactor_.value());
     const scalar consistencyTolerance = max
     (
         10.0*mRef_.value()*sourceConsistencyATol_,
         1.0e-8*max
         (
-            max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),
+            max
+            (
+                max(impurityGenerated, maximumImpurityHostRatio*hostGenerated),
+                max(impurityInventory, maximumImpurityHostRatio*hostInventory)
+            ),
             scalar(VSMALL)
         )
     );
 
+    if
+    (
+        hostGenerated > soluteStepBudget_[celli]
+     || impurityGenerated > impurityStepBudget_[celli]
+     || impurityGenerated
+        > maximumImpurityHostRatio*hostGenerated + consistencyTolerance
+    )
+    {
+        Pout<< "Moment source rejected in cell " << celli
+            << ": host=" << hostGenerated
+            << "/" << soluteStepBudget_[celli]
+            << ", impurity=" << impurityGenerated
+            << "/" << impurityStepBudget_[celli]
+            << ", maximum ratio=" << maximumImpurityHostRatio
+            << ", tolerance=" << consistencyTolerance
+            << ", host inventory=" << hostInventory
+            << ", impurity inventory=" << impurityInventory
+            << endl;
+    }
     return
         hostGenerated <= soluteStepBudget_[celli]
      && impurityGenerated <= impurityStepBudget_[celli]

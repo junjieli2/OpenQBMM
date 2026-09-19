@@ -15,6 +15,8 @@ License
 #include "EulerDdtScheme.H"
 #include "zeroGradientFvPatchField.H"
 
+#include <cmath>
+
 namespace Foam
 {
 namespace PDFTransportModels
@@ -1308,7 +1310,54 @@ crysImpurityPopulationBalance::solve()
         moment.correctBoundaryConditions();
     }
 
+    // The conditional inversion reproduces the number density and the
+    // composition moments to round-off, but the high-order size moments only
+    // to about 1e-4 relative. Projecting the quadrature back onto the moments
+    // therefore biases the accumulated incorporation ratio, because the host
+    // and impurity moments are affected differently. Scale the composition
+    // moments by the factor the projection applied to the host volume moment
+    // so the transported host-impurity pairing is preserved.
+    const labelList o30({3, 0});
+
+    const scalarField hostVolumeBefore
+    (
+        quadrature_.moments()(o30).primitiveField()
+    );
+
     quadrature_.updateQuadrature();
+
+    const volScalarMoment& hostVolumeAfter = quadrature_.moments()(o30);
+
+    forAll(hostVolumeAfter, celli)
+    {
+        const scalar before = hostVolumeBefore[celli];
+
+        if (before <= 0.0)
+        {
+            continue;
+        }
+
+        const scalar scale = hostVolumeAfter[celli]/before;
+
+        if
+        (
+            !std::isfinite(scale)
+         || scale < 0.5
+         || scale > 2.0
+         || mag(scale - 1.0) < SMALL
+        )
+        {
+            continue;
+        }
+
+        forAll(quadrature_.moments(), momenti)
+        {
+            if (quadrature_.momentOrders()[momenti][1] > 0)
+            {
+                quadrature_.moments()[momenti][celli] *= scale;
+            }
+        }
+    }
 
     const scalarField m30Before
     (

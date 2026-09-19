@@ -187,6 +187,13 @@ public:
             //- Recalculate the quadrature nodes from the moments
             void updateQuadrature();
 
+            //- Recalculate the quadrature nodes from the moments while
+            //  keeping the moments as the primary state wherever the
+            //  inversion succeeds. Cells whose inversion fails are recovered
+            //  from the last valid nodes so realizability is restored. Returns
+            //  the number of recovered cells.
+            label updateQuadraturePreservingMoments();
+
             //- Recalculate the quadrature nodes from the moments
             //  on boundaries
             void updateBoundaryQuadrature();

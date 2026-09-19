@@ -1308,7 +1308,18 @@ crysImpurityPopulationBalance::solve()
         moment.correctBoundaryConditions();
     }
 
-    quadrature_.updateQuadrature();
+    // Keep the integrated moments as the primary state. Projecting the
+    // quadrature back onto the moments after transport changes the host
+    // moments but not the impurity moments, which inflates the accumulated
+    // incorporation ratio beyond the analytic growth ceiling. Only cells whose
+    // inversion fails are recovered from the last valid nodes.
+    const label nRecovered = quadrature_.updateQuadraturePreservingMoments();
+
+    if (nRecovered > 0)
+    {
+        Info<< "Recovered " << nRecovered
+            << " cells from failed moment inversion after transport" << nl;
+    }
 
     const scalarField m30Before
     (

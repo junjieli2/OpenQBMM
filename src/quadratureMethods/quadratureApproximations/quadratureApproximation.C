@@ -311,6 +311,32 @@ void Foam::quadratureApproximation<momentType, nodeType>
 }
 
 template<class momentType, class nodeType>
+Foam::label Foam::quadratureApproximation<momentType, nodeType>
+::updateQuadraturePreservingMoments()
+{
+    label nRecovered = 0;
+
+    forAll(moments_[0], celli)
+    {
+        if
+        (
+            !momentFieldInverter_().invertLocalMoments
+            (
+                moments_, nodes_(), celli, false
+            )
+        )
+        {
+            moments_.updateLocalMoments(celli);
+            nRecovered++;
+        }
+    }
+
+    momentFieldInverter_().invertBoundaryMoments(moments_, nodes_());
+
+    return nRecovered;
+}
+
+template<class momentType, class nodeType>
 void Foam::quadratureApproximation<momentType, nodeType>
 ::updateBoundaryQuadrature()
 {

@@ -7,6 +7,7 @@
 #include "nucleationModel.H"
 #include "growthModel.H"
 #include "aggregationKernel.H"
+#include "breakupKernel.H"
 #include "diffusionModel.H"
 
 namespace Foam
@@ -39,6 +40,8 @@ class twoPopulationBalanceSystem
     Switch saEnabled_;
     Switch aaEnabled_;
     Switch speciesCoupled_;
+    Switch agglomerateBreakup_;
+    scalar singleCrystalDaughterFraction_;
 
     autoPtr<populationBalanceSubModels::nucleationModel> nucleationModel_;
     autoPtr<populationBalanceSubModels::growthModel> singleGrowthModel_;
@@ -52,6 +55,8 @@ class twoPopulationBalanceSystem
     autoPtr<populationBalanceSubModels::aggregationKernel> ssKernel_;
     autoPtr<populationBalanceSubModels::aggregationKernel> saKernel_;
     autoPtr<populationBalanceSubModels::aggregationKernel> aaKernel_;
+
+    autoPtr<populationBalanceSubModels::breakupKernel> agglomerateBreakupKernel_;
 
     dimensionedScalar rhop_;
     dimensionedScalar shapeFactor_;
@@ -74,14 +79,39 @@ class twoPopulationBalanceSystem
     volScalarField singleL32_;
     volScalarField agglomerateL10_;
     volScalarField agglomerateL32_;
+
+    //- Merged number-mean size over both populations (s1+a1)/(s0+a0)
+    volScalarField totalL10_;
+
     volScalarField totalSolidMass_;
     volScalarField SYact_;
+
+    //- Whether camera-observed moments are written
+    Switch observedMoment_;
+
+    //- Particle length at 50% detection probability
+    dimensionedScalar detectionL50_;
+
+    //- Width of the detection transition in natural-log length
+    scalar detectionLogWidth_;
+
+    //- Moment orders of the merged camera-observed moments
+    labelList observedMomentOrders_;
+
+    //- Merged moments after applying the camera detection probability
+    PtrList<volScalarField> observedMoments_;
+
+    //- Sauter mean length calculated from the merged observed moments
+    autoPtr<volScalarField> observedD32_;
 
     void validateConfiguration() const;
     void updateTotalM2();
     void updateCrossGrowthRate();
     void preUpdate();
     void updateStatistics();
+
+    //- Apply the camera observation operator to both populations
+    void updateObservedMoments();
     void calculateSpeciesTransfer(const scalarField& totalM3Before);
 
     scalar aggregationKernelValue
@@ -98,6 +128,13 @@ class twoPopulationBalanceSystem
         scalarList& singleSources,
         scalarList& agglomerateSources
     );
+
+    void addBreakupSources
+    (
+        const label celli,
+        scalarList& singleSources,
+        scalarList& agglomerateSources
+    ) const;
 
     void setCellMoments
     (

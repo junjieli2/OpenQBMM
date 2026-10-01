@@ -11,6 +11,7 @@ subModels/growthModels/coolCrysGrowthDissolution/coolCrysGrowthDissolution.C
 subModels/aggregationModels/thompsonAggregation/thompsonAggregation.C
 subModels/aggregationModels/aggregationTimeModel/aggregationTimeModel.C
 subModels/breakupModels/tubBreakup/tubBreakup.C
+subModels/breakupModels/shearPowerLawBreakup/shearPowerLawBreakup.C
 subModels/nucleationModels/deltaNucleation/deltaNucleation.C
 subModels/nucleationModels/areaNucleation/areaNucleation.C
 subModels/nucleationModels/CNTNucleation/CNTNucleation.C

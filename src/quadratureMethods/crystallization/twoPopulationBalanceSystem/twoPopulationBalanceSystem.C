@@ -3,6 +3,7 @@
 #include "EulerDdtScheme.H"
 #include "zeroGradientFvPatchField.H"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Foam
@@ -20,6 +21,57 @@ namespace populationBalanceModels
         dictionary
     );
 }
+}
+}
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+namespace
+{
+Foam::Switch observedMomentEnabled(const Foam::dictionary& dict)
+{
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault<Foam::Switch>
+        (
+            "enabled",
+            true
+        )
+      : Foam::Switch(false);
+}
+
+
+Foam::dimensionedScalar detectionL50(const Foam::dictionary& dict)
+{
+    const Foam::dimensionedScalar defaultValue
+    (
+        "L50",
+        Foam::dimLength,
+        50.0e-6
+    );
+
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault
+        (
+            "L50",
+            defaultValue
+        )
+      : defaultValue;
+}
+
+
+Foam::scalar detectionLogWidth(const Foam::dictionary& dict)
+{
+    return
+        dict.found("observationModel")
+      ? dict.subDict("observationModel").lookupOrDefault<Foam::scalar>
+        (
+            "logWidth",
+            0.25
+        )
+      : 0.25;
 }
 }
 
@@ -77,6 +129,14 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
     saEnabled_(saDict_.lookupOrDefault("enabled", false)),
     aaEnabled_(aaDict_.lookupOrDefault("enabled", false)),
     speciesCoupled_(dict.lookupOrDefault("speciesCoupled", false)),
+    agglomerateBreakup_(agglomerateDict_.lookupOrDefault("breakup", false)),
+    singleCrystalDaughterFraction_
+    (
+        agglomerateDict_.lookupOrDefault<scalar>
+        (
+            "singleCrystalDaughterFraction", 0.0
+        )
+    ),
     nucleationModel_(),
     singleGrowthModel_(),
     agglomerateGrowthModel_(),
@@ -111,6 +171,7 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
     ssKernel_(),
     saKernel_(),
     aaKernel_(),
+    agglomerateBreakupKernel_(),
     rhop_
     (
         dimensionedScalar::getOrDefault
@@ -240,6 +301,20 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         dimensionedScalar("zero", dimLength, 0.0),
         fvPatchFieldBase::zeroGradientType()
     ),
+    totalL10_
+    (
+        IOobject
+        (
+            "L10.total",
+            phi.mesh().time().timeName(),
+            phi.mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        phi.mesh(),
+        dimensionedScalar("zero", dimLength, 0.0),
+        fvPatchFieldBase::zeroGradientType()
+    ),
     totalSolidMass_
     (
         IOobject
@@ -267,7 +342,13 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         phi.mesh(),
         dimensionedScalar("zero", dimDensity/dimTime, 0.0),
         fvPatchFieldBase::zeroGradientType()
-    )
+    ),
+    observedMoment_(observedMomentEnabled(dict)),
+    detectionL50_(detectionL50(dict)),
+    detectionLogWidth_(detectionLogWidth(dict)),
+    observedMomentOrders_(),
+    observedMoments_(),
+    observedD32_()
 {
     updateTotalM2();
 
@@ -338,6 +419,10 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         {
             ssDict_.set("aggregationRateField", word("aggregationRate.ss"));
         }
+        if (!ssDict_.found("L10Field"))
+        {
+            ssDict_.set("L10Field", singleL10_.name());
+        }
         ssKernel_ = populationBalanceSubModels::aggregationKernel::New
         (
             ssDict_,
@@ -351,6 +436,10 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         if (!saDict_.found("aggregationRateField"))
         {
             saDict_.set("aggregationRateField", word("aggregationRate.sa"));
+        }
+        if (!saDict_.found("L10Field"))
+        {
+            saDict_.set("L10Field", totalL10_.name());
         }
         saKernel_ = populationBalanceSubModels::aggregationKernel::New
         (
@@ -373,6 +462,10 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         {
             aaDict_.set("aggregationRateField", word("aggregationRate.aa"));
         }
+        if (!aaDict_.found("L10Field"))
+        {
+            aaDict_.set("L10Field", agglomerateL10_.name());
+        }
         aaKernel_ = populationBalanceSubModels::aggregationKernel::New
         (
             aaDict_,
@@ -380,9 +473,126 @@ twoPopulationBalanceSystem::twoPopulationBalanceSystem
         );
     }
 
+    if (agglomerateBreakup_)
+    {
+        agglomerateBreakupKernel_ = populationBalanceSubModels::breakupKernel::New
+        (
+            agglomerateDict_.subDict("breakupKernel"), phi.mesh()
+        );
+    }
+
     validateConfiguration();
+
+    if (observedMoment_)
+    {
+        if (detectionL50_.value() <= 0.0)
+        {
+            FatalIOErrorInFunction(dict)
+                << "observationModel.L50 must be positive, found "
+                << detectionL50_ << exit(FatalIOError);
+        }
+
+        if (detectionLogWidth_ <= SMALL)
+        {
+            FatalIOErrorInFunction(dict)
+                << "observationModel.logWidth must be positive, found "
+                << detectionLogWidth_ << exit(FatalIOError);
+        }
+
+        const scalarQuadratureApproximation* quadratures[2] =
+        {
+            &singleCrystalQuadrature_,
+            &agglomerateQuadrature_
+        };
+
+        for (label populationi = 0; populationi < 2; ++populationi)
+        {
+            const labelListList& momentOrders =
+                quadratures[populationi]->momentOrders();
+
+            forAll(momentOrders, momenti)
+            {
+                const label order = momentOrders[momenti][0];
+
+                if (!observedMomentOrders_.found(order))
+                {
+                    observedMomentOrders_.append(order);
+                }
+            }
+        }
+
+        std::sort
+        (
+            observedMomentOrders_.begin(),
+            observedMomentOrders_.end()
+        );
+
+        observedMoments_.setSize(observedMomentOrders_.size());
+
+        forAll(observedMomentOrders_, momenti)
+        {
+            const label order = observedMomentOrders_[momenti];
+            const label singleIndex =
+                momentIndex(singleCrystalQuadrature_, order);
+            const label agglomerateIndex =
+                momentIndex(agglomerateQuadrature_, order);
+
+            const dimensionSet& dimensions =
+                singleIndex >= 0
+              ? singleCrystalQuadrature_.moments()[singleIndex].dimensions()
+              : agglomerateQuadrature_.moments()[agglomerateIndex].dimensions();
+
+            observedMoments_.set
+            (
+                momenti,
+                new volScalarField
+                (
+                    IOobject
+                    (
+                        IOobject::groupName
+                        (
+                            word("observedMoment.") + Foam::name(order),
+                            name
+                        ),
+                        phi.mesh().time().timeName(),
+                        phi.mesh(),
+                        IOobject::NO_READ,
+                        IOobject::AUTO_WRITE
+                    ),
+                    phi.mesh(),
+                    dimensionedScalar("zero", dimensions, 0.0),
+                    fvPatchFieldBase::zeroGradientType()
+                )
+            );
+        }
+
+        observedD32_.reset
+        (
+            new volScalarField
+            (
+                IOobject
+                (
+                    IOobject::groupName("observedD32", name),
+                    phi.mesh().time().timeName(),
+                    phi.mesh(),
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                phi.mesh(),
+                dimensionedScalar("zero", dimLength, 0.0),
+                fvPatchFieldBase::zeroGradientType()
+            )
+        );
+
+        Info<< "Camera observation model enabled for the merged populations:"
+            << nl
+            << "  L50 = " << detectionL50_.value() << " m" << nl
+            << "  logWidth = " << detectionLogWidth_ << endl;
+    }
+
     preUpdate();
     updateStatistics();
+    updateObservedMoments();
 
     scalarField totalM3Before
     (
@@ -490,6 +700,18 @@ twoPopulationBalanceSystem::validateConfiguration() const
                 << " moments must be number-density moments of length."
                 << abort(FatalError);
         }
+    }
+
+    if
+    (
+        !std::isfinite(singleCrystalDaughterFraction_)
+     || singleCrystalDaughterFraction_ < 0
+     || singleCrystalDaughterFraction_ > 1
+    )
+    {
+        FatalIOErrorInFunction(agglomerateDict_)
+            << "singleCrystalDaughterFraction must be in [0,1]."
+            << exit(FatalIOError);
     }
 
     if (rhop_.value() <= 0 || shapeFactor_.value() <= 0)
@@ -610,6 +832,10 @@ twoPopulationBalanceSystem::preUpdate()
 
     updateCrossGrowthRate();
 
+    if (agglomerateBreakup_)
+    {
+        agglomerateBreakupKernel_->preUpdate();
+    }
     if (ssEnabled_)
     {
         ssKernel_->preUpdate();
@@ -1044,6 +1270,11 @@ twoPopulationBalanceSystem::calculateSources
         agglomerateSources[momenti] += source;
     }
 
+    if (agglomerateBreakup_)
+    {
+        addBreakupSources(celli, singleSources, agglomerateSources);
+    }
+
     forAll(singleSources, momenti)
     {
         if (!std::isfinite(singleSources[momenti]))
@@ -1065,6 +1296,58 @@ twoPopulationBalanceSystem::calculateSources
                 << abort(FatalError);
         }
     }
+}
+
+
+void Foam::PDFTransportModels::populationBalanceModels::
+twoPopulationBalanceSystem::addBreakupSources
+(
+    const label celli,
+    scalarList& singleSources,
+    scalarList& agglomerateSources
+) const
+{
+    const auto& nodes = agglomerateQuadrature_.nodes();
+    const auto& singleOrders = singleCrystalQuadrature_.momentOrders();
+    const auto& agglomerateOrders = agglomerateQuadrature_.momentOrders();
+    const scalar f = singleCrystalDaughterFraction_;
+    scalar volumeTransfer = 0;
+
+    forAll(nodes, nodei)
+    {
+        const volScalarNode& node = nodes[nodei];
+        const scalar L = max(node.abscissae()[0][celli], scalar(0));
+        const scalar number = node.numberDensity(celli, node.weight()[celli], L);
+        if (number <= 0 || L <= 0)
+        {
+            continue;
+        }
+        const scalar events = number*agglomerateBreakupKernel_->Kb(L, celli);
+        volumeTransfer += f*events*pow3(L);
+
+        forAll(singleSources, momenti)
+        {
+            const label k = singleOrders[momenti][0];
+            if (k != 3 && f > 0)
+            {
+                singleSources[momenti] += f*events
+                    *agglomerateBreakupKernel_->daughterMoment(k, L);
+            }
+        }
+        forAll(agglomerateSources, momenti)
+        {
+            const label k = agglomerateOrders[momenti][0];
+            if (k != 3)
+            {
+                agglomerateSources[momenti] += events
+                    *((1 - f)*agglomerateBreakupKernel_->daughterMoment(k, L)
+                      - Foam::pow(L, k));
+            }
+        }
+    }
+    // A common transfer enforces total solid-volume conservation exactly.
+    singleSources[momentIndex(singleCrystalQuadrature_, 3)] += volumeTransfer;
+    agglomerateSources[momentIndex(agglomerateQuadrature_, 3)] -= volumeTransfer;
 }
 
 
@@ -1100,10 +1383,30 @@ twoPopulationBalanceSystem::updateCellQuadratures
     const bool fatal
 )
 {
-    const bool singleRealizable =
-        singleCrystalQuadrature_.updateLocalQuadrature(celli, fatal);
-    const bool agglomerateRealizable =
-        agglomerateQuadrature_.updateLocalQuadrature(celli, fatal);
+    // The generic non-fatal inversion rejects m0=0. An exactly empty
+    // population is valid here and must not block the other population.
+    const auto invert = [celli, fatal](scalarQuadratureApproximation& q)
+    {
+        bool empty = true;
+        forAll(q.moments(), momenti)
+        {
+            empty = empty && q.moments()[momenti][celli] == 0;
+        }
+        if (empty)
+        {
+            // updateLocalQuadrature always invokes the generic non-fatal
+            // inverter, so reset the empty node representation explicitly.
+            forAll(q.nodes(), nodei)
+            {
+                q.nodes()[nodei].weight()[celli] = 0;
+                q.nodes()[nodei].abscissae()[0][celli] = 0;
+            }
+            return true;
+        }
+        return q.updateLocalQuadrature(celli, fatal);
+    };
+    const bool singleRealizable = invert(singleCrystalQuadrature_);
+    const bool agglomerateRealizable = invert(agglomerateQuadrature_);
     const bool bothRealizable =
         singleRealizable && agglomerateRealizable;
 
@@ -1131,6 +1434,7 @@ twoPopulationBalanceSystem::solveCoupledSources()
          && !ssEnabled_
          && !saEnabled_
          && !aaEnabled_
+         && !agglomerateBreakup_
         )
     )
     {
@@ -1518,6 +1822,9 @@ twoPopulationBalanceSystem::updateStatistics()
             a1[celli]/max(a0[celli], scalar(SMALL));
         agglomerateL32_[celli] =
             a3[celli]/max(a2[celli], scalar(SMALL));
+        totalL10_[celli] =
+            (s1[celli] + a1[celli])
+           /max(s0[celli] + a0[celli], scalar(SMALL));
         totalSolidMass_[celli] =
             rhop_.value()*shapeFactor_.value()
            *max(s3[celli] + a3[celli], scalar(0));
@@ -1527,8 +1834,102 @@ twoPopulationBalanceSystem::updateStatistics()
     singleL32_.correctBoundaryConditions();
     agglomerateL10_.correctBoundaryConditions();
     agglomerateL32_.correctBoundaryConditions();
+    totalL10_.correctBoundaryConditions();
     totalSolidMass_.correctBoundaryConditions();
     updateCrossGrowthRate();
+}
+
+
+void Foam::PDFTransportModels::populationBalanceModels::
+twoPopulationBalanceSystem::updateObservedMoments()
+{
+    if (!observedMoment_)
+    {
+        return;
+    }
+
+    forAll(observedMoments_, momenti)
+    {
+        observedMoments_[momenti] = dimensionedScalar
+        (
+            "zero",
+            observedMoments_[momenti].dimensions(),
+            0.0
+        );
+    }
+
+    const scalar logL50 = Foam::log(detectionL50_.value());
+
+    const scalarQuadratureApproximation* quadratures[2] =
+    {
+        &singleCrystalQuadrature_,
+        &agglomerateQuadrature_
+    };
+
+    for (label populationi = 0; populationi < 2; ++populationi)
+    {
+        const mappedPtrList<volScalarNode>& nodes =
+            quadratures[populationi]->nodes();
+
+        forAll(nodes, nodei)
+        {
+            const volScalarField& weight = nodes[nodei].weight();
+            const volScalarField& length = nodes[nodei].abscissae()[0];
+
+            forAll(weight, celli)
+            {
+                const scalar Li = max(length[celli], VSMALL);
+                const scalar logDistance =
+                    (Foam::log(Li) - logL50)/detectionLogWidth_;
+                const scalar boundedDistance =
+                    max(min(logDistance, scalar(60)), scalar(-60));
+                const scalar detectionProbability =
+                    1.0/(1.0 + Foam::exp(-boundedDistance));
+
+                forAll(observedMoments_, momenti)
+                {
+                    observedMoments_[momenti][celli] +=
+                        weight[celli]
+                       *detectionProbability
+                       *Foam::pow
+                        (
+                            Li,
+                            observedMomentOrders_[momenti]
+                        );
+                }
+            }
+        }
+    }
+
+    label m2Index = -1;
+    label m3Index = -1;
+
+    forAll(observedMomentOrders_, momenti)
+    {
+        if (observedMomentOrders_[momenti] == 2)
+        {
+            m2Index = momenti;
+        }
+        else if (observedMomentOrders_[momenti] == 3)
+        {
+            m3Index = momenti;
+        }
+    }
+
+    forAll(observedD32_(), celli)
+    {
+        observedD32_()[celli] =
+            m2Index >= 0 && m3Index >= 0
+          ? observedMoments_[m3Index][celli]
+           /(observedMoments_[m2Index][celli] + VSMALL)
+          : 0.0;
+    }
+
+    forAll(observedMoments_, momenti)
+    {
+        observedMoments_[momenti].correctBoundaryConditions();
+    }
+    observedD32_().correctBoundaryConditions();
 }
 
 
@@ -1651,6 +2052,7 @@ twoPopulationBalanceSystem::solve()
 
     solveCoupledSources();
     updateStatistics();
+    updateObservedMoments();
     calculateSpeciesTransfer(totalM3Before);
 }
 

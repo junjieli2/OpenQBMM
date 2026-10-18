@@ -16,8 +16,10 @@ Class
 Description
     Reduced three-coordinate crystal population balance in one
     volume-equivalent size L and two normalized incorporated-impurity masses
-    z1 and z2. Borsos face growth rates are projected onto L; crystal shape is
-    not an evolved coordinate.
+    z1 and z2. Each impurity adsorbs on its own Langmuir isotherm; the two
+    Kubota--Mullin inhibition terms add and reduce one size-growth rate,
+    GL = G0*clip(1 - alpha1*theta1 - alpha2*theta2, 0, 1), with
+    alphar = inhibitionScaler*betar/(T*sigma). Crystal shape is not resolved.
 
 \*---------------------------------------------------------------------------*/
 
@@ -69,10 +71,8 @@ class crysDualImpurityPopulationBalance
     dimensionedScalar mRef_;
     dimensionedScalar rhoSolvent_;
 
-    dimensionedScalar kg1_;
-    dimensionedScalar kg2_;
-    scalar g1_;
-    scalar g2_;
+    dimensionedScalar CgGrowth_;
+    scalar gGrowth_;
     scalar growthScale_;
 
     scalar kads01_;
@@ -86,8 +86,8 @@ class crysDualImpurityPopulationBalance
     dimensionedScalar gasConstant_;
     dimensionedScalar beta1_;
     dimensionedScalar beta2_;
-    scalar faceEffectScale1_;
-    scalar faceEffectScale2_;
+    scalar inhibitionScale1_;
+    scalar inhibitionScale2_;
 
     dimensionedScalar molarMassKDP_;
     dimensionedScalar molarMassCGM1_;
@@ -111,10 +111,7 @@ class crysDualImpurityPopulationBalance
     volScalarField solidCGM2Ppm_;
     volScalarField totalImpurityPpm_;
     volScalarField crystalPurityPercent_;
-    volScalarField faceFactor1_;
-    volScalarField faceFactor2_;
-    volScalarField faceGrowth1_;
-    volScalarField faceGrowth2_;
+    volScalarField inhibitionFactor_;
     volScalarField equivalentGrowth_;
     volScalarField SYact_;
     volScalarField SI1act_;
@@ -141,10 +138,7 @@ class crysDualImpurityPopulationBalance
     void kineticState
     (
         const label celli,
-        scalar& p1,
-        scalar& p2,
-        scalar& G1,
-        scalar& G2,
+        scalar& p,
         scalar& GL,
         scalar& q1,
         scalar& q2

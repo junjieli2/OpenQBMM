@@ -155,10 +155,8 @@ crysDualImpurityPopulationBalance::crysDualImpurityPopulationBalance
             1000.0
         )
     ),
-    kg1_("kg1", dimLength/dimTime, dict.subDict("growthCoeffs")),
-    kg2_("kg2", dimLength/dimTime, dict.subDict("growthCoeffs")),
-    g1_(readScalar(dict.subDict("growthCoeffs").lookup("g1"))),
-    g2_(readScalar(dict.subDict("growthCoeffs").lookup("g2"))),
+    CgGrowth_("CgGrowth", dimLength/dimTime, dict.subDict("growthCoeffs")),
+    gGrowth_(readScalar(dict.subDict("growthCoeffs").lookup("gGrowth"))),
     growthScale_
     (
         dict.subDict("reductionCoeffs").lookupOrDefault<scalar>
@@ -229,19 +227,19 @@ crysDualImpurityPopulationBalance::crysDualImpurityPopulationBalance
         dimTemperature,
         dict.subDict("adsorptionCoeffs")
     ),
-    faceEffectScale1_
+    inhibitionScale1_
     (
         dict.subDict("reductionCoeffs").lookupOrDefault<scalar>
         (
-            "faceEffectScale1",
+            "inhibitionScale1",
             1.0
         )
     ),
-    faceEffectScale2_
+    inhibitionScale2_
     (
         dict.subDict("reductionCoeffs").lookupOrDefault<scalar>
         (
-            "faceEffectScale2",
+            "inhibitionScale2",
             1.0
         )
     ),
@@ -417,11 +415,11 @@ crysDualImpurityPopulationBalance::crysDualImpurityPopulationBalance
         dimensionedScalar("zero", dimless, 100.0),
         fvPatchFieldBase::zeroGradientType()
     ),
-    faceFactor1_
+    inhibitionFactor_
     (
         IOobject
         (
-            "borsosFaceFactor1",
+            "impurityInhibitionFactor",
             phi.mesh().time().timeName(),
             phi.mesh(),
             IOobject::NO_READ,
@@ -429,48 +427,6 @@ crysDualImpurityPopulationBalance::crysDualImpurityPopulationBalance
         ),
         phi.mesh(),
         dimensionedScalar("one", dimless, 1.0),
-        fvPatchFieldBase::zeroGradientType()
-    ),
-    faceFactor2_
-    (
-        IOobject
-        (
-            "borsosFaceFactor2",
-            phi.mesh().time().timeName(),
-            phi.mesh(),
-            IOobject::NO_READ,
-            IOobject::AUTO_WRITE
-        ),
-        phi.mesh(),
-        dimensionedScalar("one", dimless, 1.0),
-        fvPatchFieldBase::zeroGradientType()
-    ),
-    faceGrowth1_
-    (
-        IOobject
-        (
-            "borsosFaceGrowth1",
-            phi.mesh().time().timeName(),
-            phi.mesh(),
-            IOobject::NO_READ,
-            IOobject::AUTO_WRITE
-        ),
-        phi.mesh(),
-        dimensionedScalar("zero", dimLength/dimTime, 0.0),
-        fvPatchFieldBase::zeroGradientType()
-    ),
-    faceGrowth2_
-    (
-        IOobject
-        (
-            "borsosFaceGrowth2",
-            phi.mesh().time().timeName(),
-            phi.mesh(),
-            IOobject::NO_READ,
-            IOobject::AUTO_WRITE
-        ),
-        phi.mesh(),
-        dimensionedScalar("zero", dimLength/dimTime, 0.0),
         fvPatchFieldBase::zeroGradientType()
     ),
     equivalentGrowth_
@@ -571,8 +527,8 @@ crysDualImpurityPopulationBalance::crysDualImpurityPopulationBalance
     calcSpeciesTransfer(initialM300, initialM010, initialM001);
 
     Info<< "Reduced dual-impurity crystal coordinates: (L,z1,z2), mRef="
-        << mRef_.value() << " kg; volume-equivalent growth projection is "
-        << "(6/pi)^(1/3)*(G1 + 2*G2)/3." << endl;
+        << mRef_.value() << " kg; additive Kubota-Mullin inhibition "
+        << "GL = G0*clip(1 - alpha1*theta1 - alpha2*theta2, 0, 1)." << endl;
 }
 
 
@@ -717,10 +673,8 @@ crysDualImpurityPopulationBalance::validateConfiguration() const
      || shapeFactor_.value() <= 0
      || sizeRef_.value() <= 0
      || rhoSolvent_.value() <= 0
-     || kg1_.value() < 0
-     || kg2_.value() < 0
-     || g1_ < 0
-     || g2_ < 0
+     || CgGrowth_.value() < 0
+     || gGrowth_ < 0
      || growthScale_ < 0
      || kads01_ < 0
      || kads02_ < 0
@@ -729,8 +683,8 @@ crysDualImpurityPopulationBalance::validateConfiguration() const
      || gasConstant_.value() <= 0
      || beta1_.value() < 0
      || beta2_.value() < 0
-     || faceEffectScale1_ < 0
-     || faceEffectScale2_ < 0
+     || inhibitionScale1_ < 0
+     || inhibitionScale2_ < 0
      || molarMassKDP_.value() <= 0
      || molarMassCGM1_.value() <= 0
      || molarMassCGM2_.value() <= 0
@@ -773,19 +727,13 @@ void Foam::PDFTransportModels::populationBalanceModels::
 crysDualImpurityPopulationBalance::kineticState
 (
     const label celli,
-    scalar& p1,
-    scalar& p2,
-    scalar& G1,
-    scalar& G2,
+    scalar& p,
     scalar& GL,
     scalar& q1,
     scalar& q2
 ) const
 {
-    p1 = 1.0;
-    p2 = 1.0;
-    G1 = 0.0;
-    G2 = 0.0;
+    p = 1.0;
     GL = 0.0;
     q1 = 0.0;
     q2 = 0.0;
@@ -819,31 +767,23 @@ crysDualImpurityPopulationBalance::kineticState
     const scalar theta1 = K1*cgm1/(1.0 + K1*cgm1);
     const scalar theta2 = K2*cgm2/(1.0 + K2*cgm2);
     const scalar alpha1 =
-        faceEffectScale1_*beta1_.value()/(temperature*sigma);
+        inhibitionScale1_*beta1_.value()/(temperature*sigma);
     const scalar alpha2 =
-        faceEffectScale2_*beta2_.value()/(temperature*sigma);
+        inhibitionScale2_*beta2_.value()/(temperature*sigma);
 
-    // A negative paper impurity factor represents complete growth arrest in
-    // the reduced positive-growth model. Clamp only at the physical bounds.
-    p1 = min(max(1.0 - alpha1*theta1, scalar(0)), scalar(1));
-    p2 = min(max(1.0 - alpha2*theta2, scalar(0)), scalar(1));
+    // The two adsorbed impurities act independently and their Kubota-Mullin
+    // inhibition terms add. A negative factor represents complete growth
+    // arrest; clamp only at the physical bounds.
+    p = min(max(1.0 - alpha1*theta1 - alpha2*theta2, scalar(0)), scalar(1));
 
-    G1 = growthScale_*kg1_.value()*std::pow(sigma, g1_)*p1;
-    G2 = growthScale_*kg2_.value()*std::pow(sigma, g2_)*p2;
-    GL =
-        std::pow(6.0/constant::mathematical::pi, 1.0/3.0)
-       *(G1 + 2.0*G2)/3.0;
+    GL = growthScale_*CgGrowth_.value()*std::pow(sigma, gGrowth_)*p;
 
-    if
-    (
-        !std::isfinite(K1) || !std::isfinite(K2)
-     || !std::isfinite(G1) || !std::isfinite(G2) || !std::isfinite(GL)
-    )
+    if (!std::isfinite(K1) || !std::isfinite(K2) || !std::isfinite(GL))
     {
         FatalErrorInFunction
-            << "Non-finite Borsos kinetic state in cell " << celli
-            << ": K1=" << K1 << ", K2=" << K2 << ", G1=" << G1
-            << ", G2=" << G2 << ", GL=" << GL << exit(FatalError);
+            << "Non-finite dual-impurity kinetic state in cell " << celli
+            << ": K1=" << K1 << ", K2=" << K2 << ", GL=" << GL
+            << exit(FatalError);
     }
 
     if (GL <= SMALL)
@@ -851,19 +791,15 @@ crysDualImpurityPopulationBalance::kineticState
         return;
     }
 
-    const scalar km1 = massTransferCoefficient(G1, km01_.value());
-    const scalar km2 = massTransferCoefficient(G2, km02_.value());
+    const scalar km1 = massTransferCoefficient(GL, km01_.value());
+    const scalar km2 = massTransferCoefficient(GL, km02_.value());
     const scalar kmin1 =
         massTransferCoefficient(Gmin1_.value(), km01_.value());
     const scalar kmin2 =
         massTransferCoefficient(Gmin2_.value(), km02_.value());
 
-    const scalar exponent1 = G1 > SMALL
-        ? Gmin1_.value()*km1/(G1*kmin1)
-        : GREAT;
-    const scalar exponent2 = G2 > SMALL
-        ? Gmin2_.value()*km2/(G2*kmin2)
-        : GREAT;
+    const scalar exponent1 = Gmin1_.value()*km1/(GL*kmin1);
+    const scalar exponent2 = Gmin2_.value()*km2/(GL*kmin2);
     const scalar base1 = max(1.0 - Ke1_, scalar(0));
     const scalar base2 = max(1.0 - Ke2_, scalar(0));
     const scalar Kd1 =
@@ -912,20 +848,14 @@ crysDualImpurityPopulationBalance::kineticState
 void Foam::PDFTransportModels::populationBalanceModels::
 crysDualImpurityPopulationBalance::updateKineticDiagnostics()
 {
-    forAll(faceFactor1_, celli)
+    forAll(inhibitionFactor_, celli)
     {
-        scalar p1, p2, G1, G2, GL, q1, q2;
-        kineticState(celli, p1, p2, G1, G2, GL, q1, q2);
-        faceFactor1_[celli] = p1;
-        faceFactor2_[celli] = p2;
-        faceGrowth1_[celli] = G1;
-        faceGrowth2_[celli] = G2;
+        scalar p, GL, q1, q2;
+        kineticState(celli, p, GL, q1, q2);
+        inhibitionFactor_[celli] = p;
         equivalentGrowth_[celli] = GL;
     }
-    faceFactor1_.correctBoundaryConditions();
-    faceFactor2_.correctBoundaryConditions();
-    faceGrowth1_.correctBoundaryConditions();
-    faceGrowth2_.correctBoundaryConditions();
+    inhibitionFactor_.correctBoundaryConditions();
     equivalentGrowth_.correctBoundaryConditions();
 }
 
@@ -966,12 +896,9 @@ crysDualImpurityPopulationBalance::crystallizationSource
         return source;
     }
 
-    scalar p1, p2, G1, G2, GL, q1, q2;
-    kineticState(celli, p1, p2, G1, G2, GL, q1, q2);
-    (void)p1;
-    (void)p2;
-    (void)G1;
-    (void)G2;
+    scalar p, GL, q1, q2;
+    kineticState(celli, p, GL, q1, q2);
+    (void)p;
 
     const volScalarMomentFieldSet& moments = quadrature_.moments();
 
